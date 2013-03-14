@@ -1,10 +1,18 @@
 {
-  "name": "hello-world",
-  "description": "hello world test app",
+  "name": "nodesk",
+  "description": "node + odesk",
   "version": "0.0.1",
-  "private": true,
   "dependencies": {
-  	"fibers" : "*",
-  	"underscore" : "*"
+    "express": "*",
+    "mongojs": "*",
+    "passport": "*",
+    "passport-oauth": "*",
+    "node-odesk": "*",
+    "fibers": "*",
+    "connect-mongo": "*"
+  },
+  "engines": {
+    "node": "0.8.x",
+    "npm": "1.1.x"
   }
 }
