@@ -41,36 +41,46 @@ _.yield = function () {
     return Fiber.yield()
 }
 
-_.promise = function () {
+_.p = _.prom = function () {
     var f = Fiber.current
-    var done = false
-    var val = null
-    return {
-        set : function (v) {
-            done = true
-            val = v
+    if (!f.promise) {
+        f.promise = "waiting"
+        return function () {
+            if (arguments.length <= 1) {
+                var arg = arguments[0]
+                if (arg instanceof Error)
+                    f.promise = { err : arg }
+                else
+                    f.promise = { val : arg }
+            } else {
+                f.promise = {
+                    err : arguments[0],
+                    val : arguments[1]
+                }
+            }
             _.run(f)
-        },
-        get : function () {
-            while (!done) _.yield()
-            done = false
-            return val
         }
+    } else {
+        while (f.promise == "waiting") _.yield()
+        var p = f.promise 
+        delete f.promise
+        if (p.err) throw p.err
+        return p.val
     }
 }
 
-_.promiseErr = function () {
-    var p = _.promise()
-    return {
-        set : function (err, data) {
-            p.set([err, data])
-        },
-        get : function () {
-            var x = p.get()
-            if (x[0]) throw x[0]
-            return x[1]
-        }
-    }
+_.parallel = function (funcs) {
+    var set = _.prom()
+    var remaining = funcs.length
+    _.each(funcs, function (f) {
+        _.run(function () {
+            f()
+            remaining--
+            if (remaining <= 0) set()
+        })
+    })
+    if (remaining <= 0) set()
+    return _.prom()
 }
 
 _.consume = function (input, encoding) {
@@ -82,7 +92,7 @@ _.consume = function (input, encoding) {
         input.setEncoding(encoding || 'utf8')
     }
     
-    var p = _.promise()
+    var p = _.p()
     input.on('data', function (chunk) {
         if (encoding == 'buffer') {
             chunk.copy(buffer, cursor)
@@ -93,12 +103,12 @@ _.consume = function (input, encoding) {
     })
     input.on('end', function () {
         if (encoding == 'buffer') {
-            p.set(buffer)
+            p(buffer)
         } else {
-            p.set(chunks.join(''))
+            p(chunks.join(''))
         }
     })
-    return p.get()
+    return _.p()
 }
 
 _.wget = function (url, params, encoding) {
@@ -112,30 +122,16 @@ _.wget = function (url, params, encoding) {
     if (url.port)
         o.port = url.port
     
-    var data = ""
-    var dataEnc = null
     if (params && params.length != null) {
-        data = params
-        o.headers = {
-            "Content-Length" : data.length
-        }
+        var data = params
     } else {
-        data = _.values(_.map(params, function (v, k) { return k + "=" + encodeURIComponent(v) })).join('&')
-        
-        o.headers = {
-            "Content-Type" : "application/x-www-form-urlencoded",
-            "Content-Length" : Buffer.byteLength(data, 'utf8')
-        }
-        
-        dataEnc = "utf8"
+        var data = _.values(_.map(params, function (v, k) { return k + "=" + encodeURIComponent(v) })).join('&')
+    }
+    o.headers = {
+        "Content-Type" : "application/x-www-form-urlencoded; charset=UTF-8",
+        "Content-Length" : Buffer.byteLength(data, 'utf8')
     }
     
-    var p = _.promise()
-    var req = require(url.protocol.replace(/:/, '')).request(o, function (res) {
-        _.run(function () {
-            p.set(_.consume(res, encoding))
-        })
-    })
-    req.end(data, dataEnc)
-    return p.get()
+    require(url.protocol.replace(/:/, '')).request(o, _.p()).end(data, 'utf8')
+    return _.consume(_.p(), encoding)
 }

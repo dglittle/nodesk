@@ -23,9 +23,385 @@ th, td {
 <script src="https://raw.github.com/dglittle/myutil/master/jquery.timeago.js"></script>
 <script>
 
+function onError(msg) {
+    var div = $('<div style="padding:20px"/>')
+    div.append($('<span/>').text(msg || "Oops. Not sure what happened."))
+    div.append($('<br/>'))
+    div.append($('<a href="#"/>').text("Please refresh the page.").click(function (e) {
+        e.preventDefault()
+        location.reload()
+    }))
+    _.dialog(div)
+}
+
+g_rpc_version = RPC_VERSION
+g_rpc_timer = null
+g_rpc = []
+
+function rpc() {
+    var args = _.toArray(arguments)
+    var func = args.shift()
+    var cb = typeof(args[args.length - 1]) == "function" ? args.pop() : null
+
+    g_rpc.push({
+        payload : { func : func, args : args },
+        cb : cb
+    })
+    if (g_rpc_timer) clearTimeout(g_rpc_timer)
+    g_rpc_timer = setTimeout(function () {
+        g_rpc_timer = null
+        var save_rpc = g_rpc
+        g_rpc = []
+        $.ajax({
+            url : '/rpc/v' + g_rpc_version,
+            type : 'post',
+            data : _.json(_.map(save_rpc, function (e) { return e.payload })),
+            success : function (r) {
+                for (var i = 0; i < r.length; i++) {
+                    if (save_rpc[i].cb)
+                        save_rpc[i].cb(r[i])
+                }
+            },
+            error : function () {
+                onError()
+            }
+        })
+    }, 0)
+}
+
+function drawDropdown(options) {
+    var s = $('<select>')
+    _.each(options, function (o, k) {
+        var oj = $('<option/>').text(k)
+        oj[0].val = o
+        s.append(oj)
+    })
+    s.val = function () {
+        return s.find(':selected')[0].val
+    }
+    return s
+}
+
+function drawTeamDropdown(teams) {
+    var m = {}
+    _.each(teams, function (t) {
+        m[t.name] = t
+    })
+    return drawDropdown(m)
+}
+
+function drawCategoryDropdown() {
+    var m = {}
+    _.each(g_cats, function (v, cat) {
+        _.each(v, function (v) {
+            m[cat + ' / ' + v] = { cat : cat, subcat : v }
+        })
+    })
+    var dd = drawDropdown(m)
+    dd.find(':nth-child(2)').attr('selected', 'selected')
+    return dd
+}
+
+function drawPostJob(team) {
+    var div = $('<div/>')
+
+    var cats = drawCategoryDropdown()
+    div.append(cats)
+    div.append('<br/>')
+
+    var price = $('<input type="text"/>')
+    price.val(20)
+    div.append($('<span/>').text('price: '))
+    div.append(price)
+    div.append('<br/>')
+
+    var title = $('<input type="text" style="width:400px"/>')
+    div.append($('<span/>').text('title: '))
+    div.append(title)
+    div.append('<br/>')
+
+    var desc = $('<textarea style="width:500px;height:300px"/>')
+    div.append(desc)
+    div.append('<br/>')
+
+    var label = $('<label/>')
+    var _public = $('<input type="checkbox"/>')
+    label.append(_public.prop('checked', true))
+    label.append($('<span/>').text('public'))
+    div.append(label)
+    div.append('<br/>')
+
+    div.append($('<button/>').text('submit').click(function () {
+        
+        var d = new Date(_.time() + (1000 * 60 * 60 * 24 * 7))
+        d = "" + d.getMonth() + "-" + d.getDate() + "-" + d.getFullYear()
+
+        rpc('postJob', {
+            buyer_team__reference : team.reference,
+            category : cats.val().cat,
+            subcategory : cats.val().subcat,
+            title : title.val(),
+            description : desc.val(),
+            budget : price.val(),
+            visibility : _public[0].checked ? 'public' : 'private',
+            job_type : 'fixed-price',
+            end_date : d
+        })
+
+        drawListJobs(team)
+    }))
+    g_bottom.empty().append(div)
+}
+
+function drawEng(eng) {
+    var div = $('<div/>')
+    div.append($('<span/>').text(eng.job__title))
+    div.append($('<span/>').text(' '))
+    div.append($('<span/>').text(eng.provider__id))
+    div.append($('<button/>').text('message').click(function () {
+        var d = $('<div/>')
+        var s = $('<input type="text" style="width:300px"/>')
+        s.val('welcome!')
+        d.append(s)
+        d.append($('<br/>'))
+        var t = $('<textarea style="width:300px;height:200px"/>')
+        t.val('you can go ahead and get started. thanks :)')
+        d.append(t)
+        d.append($('<br/>'))
+        d.append($('<button/>').text('send').click(function () {
+            rpc('sendMessage', eng.provider__id, s.val(), t.val(), function () {
+                _.closeDialog()
+            })
+        }))
+        d.append($('<button/>').text('cancel').click(function () {
+            _.closeDialog()
+        }))
+        _.dialog(d)
+    }))
+    div.append($('<button/>').text('close').click(function () {
+        window.open('https://www.odesk.com/e/' + eng.buyer_team__reference + '/contracts/' + eng.reference + '/close', '_blank')
+        window.focus()
+    }))
+    return div
+}
+
+function drawListStuff(team) {
+    var div = $('<div/>')
+
+    var d1 = $('<div/>').text('jobs...')
+    div.append(d1)
+    var d2 = $('<div/>').text('on going...')
+    div.append(d2)
+
+    rpc('getJobsAndEngs', team, function (o) {
+        _.each(o.jobs, function (job) {
+            var d = $('<div/>')
+            d.append($('<span style="color:blue;cursor:pointer"/>').text(job.title).click(function () {
+                drawJob(job)
+            }))
+            d1.append(d)
+        })
+
+        _.each(o.engs, function (eng) {
+            d2.append(drawEng(eng))
+        })
+    })
+
+    g_bottom.empty().append(div)
+}
+
+function drawJob(job) {
+    var div = $('<div/>')
+
+    div.append($('<div/>').text(job.title))
+
+    ///
+
+    div.append($('<div/>').text('engagements...'))
+    var engDiv = $('<div/>')
+    div.append(engDiv)
+    rpc('getEngs', job, function (engs) {
+        _.each(engs, function (eng) {
+            engDiv.append(drawEng(eng))
+        })
+    })
+    div.append($('<br/>'))
+
+    ///
+
+    function drawApp(app) {
+        var div = $('<div/>')
+        div.append($('<a/>').attr('href', app.provider__profile_url).text(app.provider__name))
+        div.append($('<span/>').text(" (" + app.provider__feedback_score + ")"))
+        div.append($('<br/>'))
+        if (1 * app.fixed_price_upfront_payment > 0)
+            div.append($('<div style="font-weight:bold;color:red"/>').text(app.fixed_price_upfront_payment + '% UPFRONT'))
+        div.append($('<div/>').text('$' + app.fixed_charge_amount_agreed))
+        div.append($('<div/>').text(app.message_from_provider))
+        if (app.attachment_file_url)
+            div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
+        div.append($('<button/>').text('hire').click(function () {
+            g_bottom.empty().append($('<div/>').text('hiring...'))
+            rpc('hire', app, function () {
+                drawJob(job)
+            })
+        }))
+        return div
+    }
+
+    div.append($('<div/>').text('applications... ' + job.count_total_candidates))
+    var appDiv = $('<div/>')
+    div.append(appDiv)
+    rpc('getApps', job, function (apps) {
+        _.each(apps, function (app) {
+            appDiv.append(drawApp(app))
+        })
+    })
+    div.append($('<br/>'))
+
+    ///
+
+    g_bottom.empty().append(div)
+}
+
 $(function () {
-    $('body').append($('<div/>').text('hello world'))
+    g_top = $('<div/>')
+    g_bottom = $('<div style="border-top:1px solid lightgrey"/>')
+    $('body').append(_.splitVert(0.01, 0.99, g_top, g_bottom))
+
+	rpc('getUser', function (user) {
+        g_top.append($('<span/>').text('welcome ' + user.name))
+
+        var teamSpan = $('<span/>')
+        g_top.append(teamSpan)
+        function redrawTeam(team) {
+            teamSpan.empty()
+            teamSpan.text(', team: ' + (team ? team.name : ''))
+            teamSpan.append($('<button/>').text('set team').click(function () {
+                rpc('getTeams', function (teams) {
+                    var d = $('<div/>')
+                    var dd = drawTeamDropdown(teams)
+                    d.append(dd)
+                    d.append($('<br/>'))
+                    d.append($('<button/>').text('set').click(function () {
+                        var t = dd.val()
+                        rpc('setTeam', t, function () {
+                            redrawTeam(t)
+                            _.closeDialog()
+                        })
+                    }))
+                    _.dialog(d)
+                })
+            }))
+            if (team) {
+                teamSpan.append($('<span/>').text(', humanscript: '))
+                teamSpan.append($('<button/>').text('post').click(function () {
+                    drawPostJob(team)
+                }))
+                teamSpan.append($('<button/>').text('list').click(function () {
+                    drawListStuff(team)
+                }))
+            }
+        }
+        redrawTeam(user.team)
+	})
 })
+
+var g_cats = {
+    "Web Development": [
+        "Web Design",
+        "Web Programming",
+        "Ecommerce",
+        "UI Design",
+        "Website QA",
+        "Website Project Management",
+        "Other - Web Development"
+    ],
+    "Software Development": [
+        "Desktop Applications",
+        "Game Development",
+        "Scripts & Utilities",
+        "Software Plug-ins",
+        "Mobile Apps",
+        "Application Interface Design",
+        "Software Project Management",
+        "Software QA",
+        "VOIP",
+        "Other - Software Development"
+    ],
+    "Networking & Information Systems": [
+        "Network Administration",
+        "DBA - Database Administration",
+        "Server Administration",
+        "ERP / CRM Implementation",
+        "Other - Networking & Information Systems"
+    ],
+    "Writing & Translation": [
+        "Technical Writing",
+        "Website Content",
+        "Blog & Article Writing",
+        "Copywriting",
+        "Translation",
+        "Creative Writing",
+        "Other - Writing & Translation"
+    ],
+    "Administrative Support": [
+        "Data Entry",
+        "Personal Assistant",
+        "Web Research",
+        "Email Response Handling",
+        "Transcription",
+        "Other - Administrative Support"
+    ],
+    "Design & Multimedia": [
+        "Graphic Design",
+        "Logo Design",
+        "Illustration",
+        "Print Design",
+        "3D Modeling & CAD",
+        "Audio Production",
+        "Video Production",
+        "Voice Talent",
+        "Animation",
+        "Presentations",
+        "Engineering & Technical Design",
+        "Other - Design & Multimedia"
+    ],
+    "Customer Service": [
+        "Customer Service & Support",
+        "Technical Support",
+        "Phone Support",
+        "Order Processing",
+        "Other - Customer Service"
+    ],
+    "Sales & Marketing": [
+        "Advertising",
+        "Email Marketing",
+        "SEO - Search Engine Optimization",
+        "SEM - Search Engine Marketing",
+        "SMM - Social Media Marketing",
+        "PR - Public Relations",
+        "Telemarketing & Telesales",
+        "Business Plans & Marketing Strategy",
+        "Market Research & Surveys",
+        "Sales & Lead Generation",
+        "Other - Sales & Marketing"
+    ],
+    "Business Services": [
+        "Accounting",
+        "Bookkeeping",
+        "HR / Payroll",
+        "Financial Services & Planning",
+        "Payment Processing",
+        "Legal",
+        "Project Management",
+        "Business Consulting",
+        "Recruiting",
+        "Statistical Analysis",
+        "Other - Business Services",
+        ""
+    ]
+}
 
 </script>
 

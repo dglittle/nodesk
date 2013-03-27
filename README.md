@@ -5,10 +5,19 @@ nodesk = node + odesk
 
 for humanscripting on odesk
 
-notes:
+to run locally:
+```
+mongod &
+node web.js
+```
+
+to run on heroku
 ```
 heroku create
-heroku apps:rename nodesk
-heroku config:set HOST=http://nodesk.herokuapp.com
-
+heroku addons:add mongohq:sandbox
+heroku config:set HOST=http://CHANGE_ME.herokuapp.com
+heroku config:set NODE_ENV=production
+heroku config:set ODESK_API_KEY=CHANGE_ME
+heroku config:set ODESK_API_KEY=CHANGE_ME
+git push heroku master
 ```
