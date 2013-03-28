@@ -12,7 +12,7 @@
     "connect-mongo": "*"
   },
   "engines": {
-    "node": "*",
+    "node": "0.10.1",
     "npm": "*"
   }
 }
