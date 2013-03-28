@@ -134,7 +134,7 @@ function drawPostJob(team) {
     div.append($('<button/>').text('submit').click(function () {
         
         var d = new Date(_.time() + (1000 * 60 * 60 * 24 * 7))
-        d = "" + d.getMonth() + "-" + d.getDate() + "-" + d.getFullYear()
+        d = "" + (d.getMonth() + 1) + "-" + d.getDate() + "-" + d.getFullYear()
 
         rpc('postJob', {
             buyer_team__reference : team.reference,
@@ -148,7 +148,7 @@ function drawPostJob(team) {
             end_date : d
         })
 
-        drawListJobs(team)
+        drawListStuff(team)
     }))
     g_bottom.empty().append(div)
 }
