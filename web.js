@@ -11,6 +11,8 @@ defaultEnv("SESSION_SECRET", "blahblah")
 defaultEnv("ODESK_API_KEY", "3f448b92c4aaf8918c0106bd164a1656")
 defaultEnv("ODESK_API_SECRET", "e6a71b4f05467054")
 
+///
+
 function logError(err, notes) {
     console.log('error: ' + (err.stack || err))
 	console.log('notes: ' + notes)
@@ -202,15 +204,12 @@ _.run(function () {
     	return e
     }
 
-    rpc.sendMessage = function (u, eng, subj, msg) {
-    	var m = _.p(getO(u).post('mc/v1/threads/' + u._id, {
-    		recipients : eng.provider__id,
+    rpc.sendMessage = function (u, to, subj, msg) {
+    	return _.p(getO(u).post('mc/v1/threads/' + u._id, {
+    		recipients : to,
     		subject : subj,
     		body : msg
     	}, _.p())).thread_id
-    	_.p(db.jobs.update({ _id : eng.job__reference }, {
-    		$push : _.object(['engs.' + eng.reference + '.messages', m])
-    	}))
     }
 
 /*
