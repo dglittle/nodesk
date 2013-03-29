@@ -215,20 +215,6 @@ function drawJob(job) {
 
     div.append($('<div/>').text(job.title))
 
-    ///
-
-    div.append($('<div/>').text('engagements...'))
-    var engDiv = $('<div/>')
-    div.append(engDiv)
-    rpc('getEngs', job, function (engs) {
-        _.each(engs, function (eng) {
-            engDiv.append(drawEng(eng))
-        })
-    })
-    div.append($('<br/>'))
-
-    ///
-
     function drawApp(app) {
         var div = $('<div/>')
         div.append($('<a/>').attr('href', app.provider__profile_url).text(app.provider__name))
@@ -258,8 +244,6 @@ function drawJob(job) {
         })
     })
     div.append($('<br/>'))
-
-    ///
 
     g_bottom.empty().append(div)
 }

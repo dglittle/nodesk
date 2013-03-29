@@ -123,20 +123,6 @@ _.run(function () {
     	return _.p(getO(u).post('hr/v2/jobs', jobParams, _.p())).job.reference
     }
 
-    rpc.getJobs = function (u, team) {
-    	return _.filter(_.oDesk_getAll(getO(u), 'hr/v2/jobs', {
-    		buyer_team__reference : team.reference,
-    		status : 'open'
-    	}), function (j) { return j.job_type == 'fixed-price'})
-    }
-
-    rpc.getEngs = function (u, team) {
-    	return _.filter(_.oDesk_getAll(getO(u), 'hr/v2/engagements', {
-    		buyer_team__reference : team.reference,
-            status : 'active'
-    	}), function (e) { return e.engagement_job_type == 'fixed-price' })
-    }
-
     rpc.getJobsAndEngs = function (u, team) {
         var o = getO(u)
 
@@ -146,7 +132,8 @@ _.run(function () {
             function () {
                 jobs = _.oDesk_getAll(o, 'hr/v2/jobs', {
                     buyer_team__reference : team.reference,
-                    created_by : u.ref
+                    created_by : u.ref,
+                    status : 'open'
                 })
             },
             function () {
@@ -157,10 +144,16 @@ _.run(function () {
             }
         ])
 
-        var myJobs = _.makeSet(_.map(jobs, function (j) { return j.reference }))
-        jobs = _.filter(jobs, function (j) { return j.status == 'open' && j.job_type == 'fixed-price'})
+        var engsJob = []
+        _.parallel(_.map(engs, function (eng, i) {
+            return function () {
+                engsJob[i] = _.p(o.get('hr/v2/jobs/' + eng.job__reference, _.p())).job
+            }
+        }))
 
-        engs = _.filter(engs, function (e) { return myJobs[e.job__reference] && e.engagement_job_type == 'fixed-price' })
+        jobs = _.filter(jobs, function (j) { return j.job_type == 'fixed-price' })
+
+        engs = _.filter(engs, function (e, i) { return engsJob[i].created_by == u._id && e.engagement_job_type == 'fixed-price' })
 
         return {
             jobs : jobs,
