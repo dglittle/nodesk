@@ -1,0 +1,21 @@
+task:
+- fork https://github.com/dglittle/nodesk
+- run locally (see readme)
+- login
+- click "set team" and set a team
+- click "post"
+- post a test job, unclicking "public" to make it private
+- click "list"
+- you should see the job you posted
+- we want to see a number to the right of that showing how many applicants there are for the job
+- put the number in square brackets, like this: [5]
+- note: you'll probably be adding code after the line "_.each(o.jobs, function (job) {"
+    - and you'll want to access "job.num_candidates"
+
+- test this (should see a 0)
+- take a screenshot
+- create humanscript directory, if there isn't one
+- put screenshot in there
+- copy-paste these instructions into a new file in there
+- commit everything
+- submit pull request to original repository
