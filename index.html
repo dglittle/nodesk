@@ -23,6 +23,23 @@ th, td {
 <script src="https://raw.github.com/dglittle/myutil/master/jquery.timeago.js"></script>
 <script>
 
+function createThrobber() {
+    var d = $("<div />");
+    for (var i = 0; i < 10; i++) {
+        $("<span />").text(".")
+                     .appendTo(d)
+                     .css({ color: i === 0 ? "#000" : "#ccc" });
+    }
+    var timer = setInterval(function () {
+        if ($.contains(document.documentElement, d[0])) {
+            d.find("span:last").prependTo(d);
+        } else {
+            clearInterval(timer);
+        }
+    }, 300);
+    return d;
+}
+
 function onError(msg) {
     var div = $('<div style="padding:20px"/>')
     div.append($('<span/>').text(msg || "Oops. Not sure what happened."))
@@ -193,7 +210,11 @@ function drawListStuff(team) {
     var d2 = $('<div/>').text('on going...')
     div.append(d2)
 
+    var throbber = createThrobber();
+    div.append(throbber);
+
     rpc('getJobsAndEngs', team, function (o) {
+	throbber.remove();
         _.each(o.jobs, function (job) {
             var d = $('<div/>')
             d.append($('<span style="color:blue;cursor:pointer"/>').text(job.title).click(function () {
