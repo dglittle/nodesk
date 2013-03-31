@@ -116,6 +116,7 @@ function drawCategoryDropdown() {
     })
     var dd = drawDropdown(m)
     dd.find(':nth-child(2)').attr('selected', 'selected')
+    dd.width('500px')
     return dd
 }
 
@@ -127,17 +128,21 @@ function drawPostJob(team) {
     div.append('<br/>')
 
     var price = $('<input type="text"/>')
+    price.width('100px')
     price.val(20)
-    div.append($('<span/>').text('price: '))
+    div.append($('<span/>').text('price: ').css('display', 'inline-block').width('50px'))
     div.append(price)
     div.append('<br/>')
 
-    var title = $('<input type="text" style="width:400px"/>')
-    div.append($('<span/>').text('title: '))
+    var title = $('<input type="text"/>')
+    title.width('450px')
+    div.append($('<span/>').text('title: ').css('display', 'inline-block').width('50px'))
     div.append(title)
     div.append('<br/>')
 
-    var desc = $('<textarea style="width:500px;height:300px"/>')
+    var desc = $('<textarea/>')
+    desc.width('500px');
+    desc.height('300px');
     div.append(desc)
     div.append('<br/>')
 
