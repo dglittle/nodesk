@@ -196,7 +196,7 @@ function drawListStuff(team) {
     rpc('getJobsAndEngs', team, function (o) {
         _.each(o.jobs, function (job) {
             var d = $('<div/>')
-            d.append($('<span style="color:blue;cursor:pointer"/>').text(job.title).click(function () {
+            d.append($('<span style="color:blue;cursor:pointer"/>').text(job.title+" ["+job.num_candidates+"]").click(function () {
                 drawJob(job)
             }))
             d1.append(d)
