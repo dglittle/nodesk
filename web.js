@@ -24,12 +24,10 @@ process.on('uncaughtException', function (err) {
 	} catch (e) {}
 })
 
-require('./u.js')
-require('./nodeutil.js')
-require('./new_u.js')
+var _ = require('gl519')
 _.run(function () {
 
-	var db = require('mongojs').connect(process.env.MONGOHQ_URL, ['jobs', 'users'])
+	var db = require('mongojs').connect(process.env.MONGOHQ_URL, ['users'])
 
 	db.createCollection('logs', {capped : true, size : 10000}, function () {})
 	logError = function (err, notes) {
@@ -73,14 +71,17 @@ _.run(function () {
 	g_rpc_version = 1
 
 	app.get('/', function (req, res) {
-		var indexHtml = _.read('./index.html').replace(/RPC_VERSION/g, g_rpc_version)
-		res.send(indexHtml)
+        res.cookie('rpc_version', g_rpc_version, { httpOnly: false})
+        res.cookie('rpc_token', _.randomString(10), { httpOnly: false})
+        res.sendfile('./index.html')
 	})
 
 	var rpc = {}
-	app.all(/\/rpc\/v(\d+)/, function (req, res) {
+	app.all(/\/rpc\/([^\/]+)\/([^\/]+)/, function (req, res) {
 		if (g_rpc_version != req.params[0])
 			throw new Error('version mismatch')
+        if (!req.cookies.rpc_token || req.cookies.rpc_token != req.params[1])
+            throw new Error('token mismatch')
         _.run(function () {
             var input = _.unJson(req.method.match(/post/i) ? req.body : _.unescapeUrl(req.url.match(/\?(.*)/)[1]))
             function runFunc(input) {
@@ -100,7 +101,7 @@ _.run(function () {
     })
 
     function getO(u) {
-		var odesk = require('node-odesk')
+		var odesk = require('node-odesk-utils')
 		var o = new odesk(process.env.ODESK_API_KEY, process.env.ODESK_API_SECRET)
 		o.OAuth.accessToken = u.accessToken
 		o.OAuth.accessTokenSecret = u.accessTokenSecret
@@ -108,7 +109,16 @@ _.run(function () {
     }
 
     rpc.getUser = function (u) {
-    	return _.omit(u, 'accessToken', 'accessTokenSecret')
+    	return _.omit(u, 'accessToken', 'accessTokenSecret', 'credentials')
+    }
+
+    rpc.getCredentials = function (u) {
+        return u.credentials
+    }
+
+    rpc.setCredentials = function (u, c) {
+        _.p(db.users.update({ _id : u._id }, { $set : { credentials : c } }, _.p()))
+        return true
     }
 
     rpc.getTeams = function (u) {
@@ -120,7 +130,21 @@ _.run(function () {
     }
 
     rpc.postJob = function (u, jobParams) {
-    	return _.p(getO(u).post('hr/v2/jobs', jobParams, _.p())).job.reference
+        if (!u.credentials) throw new Error('need to set credentials')
+        getO(u).postFixedPriceJob(
+            u.credentials.odesk.user,
+            u.credentials.odesk.pass,
+            u.credentials.odesk.securityAnswer,
+            jobParams.company,
+            jobParams.team,
+            jobParams.category,
+            jobParams.subcategory,
+            jobParams.title,
+            jobParams.description,
+            jobParams.skills,
+            jobParams.budget,
+            jobParams.visibility)
+        return true
     }
 
     rpc.getJobsAndEngs = function (u, team) {
@@ -130,14 +154,14 @@ _.run(function () {
         var engs = null
         _.parallel([
             function () {
-                jobs = _.oDesk_getAll(o, 'hr/v2/jobs', {
+                jobs = o.getAll('hr/v2/jobs', {
                     buyer_team__reference : team.reference,
                     created_by : u.ref,
                     status : 'open'
                 })
             },
             function () {
-                engs = _.oDesk_getAll(o, 'hr/v2/engagements', {
+                engs = o.getAll('hr/v2/engagements', {
                     buyer_team__reference : team.reference,
                     status : 'active'
                 })
@@ -163,38 +187,43 @@ _.run(function () {
 
     rpc.getApps = function (u, job) {
     	var o = getO(u)
-    	var apps = _.oDesk_getAll(o, 'hr/v2/offers', {
-    		buyer_team__reference : job.buyer_team__reference,
-    		job__reference : job.reference
-    	})
-    	_.parallel(_.map(apps, function (app, i) {
-    		return function () {
-    			apps[i] = _.p(o.get('hr/v2/offers/' + app.reference, _.p())).offer
-    		}
-    	}))
-    	return apps
+
+        return o.getApplicants(
+            u.credentials.odesk.user,
+            u.credentials.odesk.pass,
+            u.credentials.odesk.securityAnswer,
+            job.reference)
+
+    	// var apps = o.getAll('hr/v2/offers', {
+    	// 	buyer_team__reference : job.buyer_team__reference,
+    	// 	job__reference : job.reference
+    	// })
+    	// _.parallel(_.map(apps, function (app, i) {
+    	// 	return function () {
+    	// 		apps[i] = _.p(o.get('hr/v2/offers/' + app.reference, _.p())).offer
+    	// 	}
+    	// }))
+    	// return apps
     }
 
-    rpc.hire = function (u, app) {
-    	var o = getO(u)
-    	_.p(o.post('hr/v1/jobs/' + app.job__reference + '/candidates/' + app.reference + '/hire', {
-            'engagement-title' : app.job__title,
+    rpc.hire = function (u, jobRef, appRef, title) {
+    	var ret = _.p(getO(u).post('hr/v1/jobs/' + jobRef + '/candidates/' + appRef + '/hire', {
+            'engagement-title' : title,
             // "keep-open" : "yes"
             // "date" : "1-22-2013",
             // "weekly-limit" : 4,
             // "visibility" : "public",
     	}, _.p()))
+        return true
+    }
 
-    	var e = _.p(o.get('hr/v2/engagements', {
-    		provider__reference : app.provider__reference,
-    		job__reference : app.job__reference
-    	}, _.p())).engagements.engagement
-
-    	e.provider__name = app.provider__name
-
-    	_.p(db.jobs.update({ _id : app.job__reference }, { $set : _.object(['engs.' + e.reference, e]) }, _.p()))
-
-    	return e
+    rpc.fire = function (u, company, team, job, comment) {
+        getO(u).closeFixedPriceContract(
+            u.credentials.odesk.user,
+            u.credentials.odesk.pass,
+            u.credentials.odesk.securityAnswer,
+            company, team, job, comment)
+        return true
     }
 
     rpc.sendMessage = function (u, to, subj, msg) {
@@ -204,16 +233,6 @@ _.run(function () {
     		body : msg
     	}, _.p())).thread_id
     }
-
-/*
-    rpc.pay = function (u, eng) {
-    	return _.p(getO(u).post('hr/v2/teams/' + eng.buyer_team__reference + '/adjustments', {
-            engagement__reference : eng.reference,
-            charge_amount : eng.fixed_charge_amount_agreed,
-            comments : "Thanks!"
-        }, _.p())).adjustment
-    }
-*/
 
 	app.use(function(err, req, res, next) {
 		logError(err, {

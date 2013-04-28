@@ -1,6 +1,7 @@
 
 var passport = require('passport')
 var odesk = require('node-odesk')
+var _ = require('gl519')
 
 module.exports = function (db, app, host, odeskApiKey, odeskApiSecret) {
 	var OAuthStrategy = require('passport-oauth').OAuthStrategy;

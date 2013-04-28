@@ -7,9 +7,10 @@
     "mongojs": "*",
     "passport": "*",
     "passport-oauth": "*",
+    "connect-mongo": "*",
     "node-odesk": "*",
-    "fibers": "*",
-    "connect-mongo": "*"
+    "gl519": "git://github.com/dglittle/gl519.git#gh-pages",
+    "node-odesk-utils": "git://github.com/dglittle/node-odesk-utils.git"
   },
   "engines": {
     "node": "0.10.*",

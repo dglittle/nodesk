@@ -19,9 +19,10 @@ th, td {
 </head>
 <body>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
-<script src="https://raw.github.com/dglittle/myutil/master/u.js"></script>
-<script src="https://raw.github.com/dglittle/myutil/master/jquery.timeago.js"></script>
-<script src="https://raw.github.com/dglittle/myutil/master/tab.js"></script>
+<script src="https://raw.github.com/dglittle/gl519/gh-pages/index.js"></script>
+<script src="https://raw.github.com/dglittle/cdn/gh-pages/jquery.timeago.js"></script>
+<script src="https://raw.github.com/dglittle/cdn/gh-pages/jquery.cookie.js"></script>
+<script src="https://raw.github.com/dglittle/cdn/gh-pages/tab.js"></script>
 <script>
 
 function createThrobber() {
@@ -52,7 +53,8 @@ function onError(msg) {
     _.dialog(div)
 }
 
-g_rpc_version = RPC_VERSION
+g_rpc_version = $.cookie('rpc_version')
+g_rpc_token = $.cookie('rpc_token')
 g_rpc_timer = null
 g_rpc = []
 
@@ -71,7 +73,7 @@ function rpc() {
         var save_rpc = g_rpc
         g_rpc = []
         $.ajax({
-            url : '/rpc/v' + g_rpc_version,
+            url : '/rpc/' + g_rpc_version + '/' + g_rpc_token,
             type : 'post',
             data : _.json(_.map(save_rpc, function (e) { return e.payload })),
             success : function (r) {
@@ -155,28 +157,28 @@ function drawPostJob(team) {
     div.append('<br/>')
 
     div.append($('<button/>').text('submit').click(function () {
-        
-        var d = new Date(_.time() + (1000 * 60 * 60 * 24 * 7))
-        d = "" + (d.getMonth() + 1) + "-" + d.getDate() + "-" + d.getFullYear()
-
+        $(this).text('').append(createThrobber())
         rpc('postJob', {
-            buyer_team__reference : team.reference,
+            company : team.company__reference,
+            team : team.reference,
             category : cats.val().cat,
             subcategory : cats.val().subcat,
             title : title.val(),
             description : desc.val(),
+            skills : "",
             budget : price.val(),
-            visibility : _public[0].checked ? 'public' : 'private',
-            job_type : 'fixed-price',
-            end_date : d
+            visibility : _public[0].checked ? 'public' : 'private'
+        }, function () {
+            _.closeDialog()
         })
-
-        drawListStuff(team)
     }))
-    g_bottom.empty().append(div)
+    div.append($('<button/>').text('cancel').click(function () {
+        _.closeDialog()
+    }))
+    _.dialog(div)
 }
 
-function drawEng(eng) {
+function drawEng(team, eng) {
     var div = $('<div/>')
     div.append($('<span/>').text(eng.job__title))
     div.append($('<span/>').text(' '))
@@ -201,11 +203,18 @@ function drawEng(eng) {
         }))
         _.dialog(d)
     }))
-    div.append($('<button/>').text('close').click(function () {
-        window.open('https://www.odesk.com/e/' + eng.buyer_team__reference + '/contracts/' + eng.reference + '/close', '_blank')
-        window.focus()
+    div.append($('<button/>').text('pay/close').click(function () {
+        _.print(eng)
+        $(this).text('').append(createThrobber())
+        rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, 'Great work!', function () {
+            div.empty()
+        })
     }))
     return div
+}
+
+function getNumApps(job) {
+    return 1*job.count_total_applicants + 1*job.count_total_candidates
 }
 
 function drawListStuff(team) {
@@ -223,14 +232,14 @@ function drawListStuff(team) {
 	throbber.remove();
         _.each(o.jobs, function (job) {
             var d = $('<div/>')
-            d.append($('<span style="color:blue;cursor:pointer"/>').text(job.title+" ["+job.num_candidates+"]").click(function () {
+            d.append($('<span style="color:blue;cursor:pointer"/>').text(job.title + ' [' + getNumApps(job) + ']').click(function () {
                 drawJob(job)
             }))
             d1.append(d)
         })
 
         _.each(o.engs, function (eng) {
-            d2.append(drawEng(eng))
+            d2.append(drawEng(team, eng))
         })
     })
 
@@ -244,28 +253,30 @@ function drawJob(job) {
 
     function drawApp(app) {
         var div = $('<div/>')
-        div.append($('<a/>').attr('href', app.provider__profile_url).text(app.provider__name))
-        div.append($('<span/>').text(" (" + app.provider__feedback_score + ")"))
+        div.append($('<a/>').attr('href', 'https://www.odesk.com/users/' + app.recno_ciphertext).text(app.contractor_name))
+        div.append($('<span/>').text(" (" + (1*app.provider__feedback_score).toFixed(2) + ")"))
         div.append($('<br/>'))
-        if (1 * app.fixed_price_upfront_payment > 0)
-            div.append($('<div style="font-weight:bold;color:red"/>').text(app.fixed_price_upfront_payment + '% UPFRONT'))
-        div.append($('<div/>').text('$' + app.fixed_charge_amount_agreed))
-        div.append($('<div/>').text(app.message_from_provider))
-        if (app.attachment_file_url)
-            div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
+        if (1*app.fp_upfront_payment > 0)
+            div.append($('<div style="font-weight:bold;color:red"/>').text(app.fp_upfront_payment + '% UPFRONT'))
+        div.append($('<div/>').text('$' + app.fp_charge_amount))
+        div.append($('<div/>').text(app.cover_letter))
+        // if (app.attachment_file_url)
+        //     div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
         div.append($('<button/>').text('hire').click(function () {
-            g_bottom.empty().append($('<div/>').text('hiring...'))
-            rpc('hire', app, function () {
-                drawJob(job)
+            $(this).text('').append(createThrobber())
+            rpc('hire', app.opening_ref, app.rid, app.ui_opening_title, function () {
+                g_bottom.empty().append($('<div/>').text('hired!'))
             })
         }))
         return div
     }
 
-    div.append($('<div/>').text('applications... ' + job.count_total_candidates))
+    div.append($('<div/>').text('applications... ' + getNumApps(job)))
     var appDiv = $('<div/>')
+    appDiv.append(createThrobber())
     div.append(appDiv)
     rpc('getApps', job, function (apps) {
+        appDiv.empty()
         _.each(apps, function (app) {
             appDiv.append(drawApp(app))
         })
@@ -282,6 +293,44 @@ $(function () {
 
 	rpc('getUser', function (user) {
         g_top.append($('<span/>').text('welcome ' + user.name))
+
+        g_top.append($('<button/>').text('set creds').click(function () {
+            rpc('getCredentials', function (creds) {
+                if (!creds) creds = {}
+
+                var setCreds = []
+                function drawInput(path, defaultValue) {
+                    var d = $('<div/>')
+                    d.append($('<span style="100px"/>').text(path))
+                    var val = _.ensure.apply(null, [creds].concat(path.split(/\./), [defaultValue || '']))
+                    var input = path.match(/(pass|answer)$/i) ? $('<input type="password">') : $('<input type="text"/>')
+                    input.val(val)
+                    setCreds.push(function () {
+                        eval('creds.' + path + ' = "' + _.escapeString(input.val()) + '"')
+                    })
+                    d.append(input)
+                    return d
+                }
+
+                var d = $('<div/>')
+                d.append(drawInput('odesk.user', user._id))
+                d.append(drawInput('odesk.pass'))
+                d.append(drawInput('odesk.securityAnswer'))
+                d.append(drawInput('github.user'))
+                d.append(drawInput('github.pass'))
+
+                d.append($('<button/>').text('update').click(function () {
+                    _.each(setCreds, function (f) { f() })
+                    rpc('setCredentials', creds, function () {
+                        _.closeDialog()
+                    })
+                }))
+                d.append($('<button/>').text('cancel').click(function () {
+                    _.closeDialog()
+                }))
+                _.dialog(d)
+            })
+        }))
 
         var teamSpan = $('<span/>')
         g_top.append(teamSpan)
@@ -300,6 +349,9 @@ $(function () {
                             redrawTeam(t)
                             _.closeDialog()
                         })
+                    }))
+                    d.append($('<button/>').text('cancel').click(function () {
+                        _.closeDialog()
                     }))
                     _.dialog(d)
                 })
