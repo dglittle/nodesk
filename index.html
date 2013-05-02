@@ -178,6 +178,79 @@ function drawPostJob(team) {
     _.dialog(div)
 }
 
+function drawPostIssueJob(team) {
+    var div = $('<div/>')
+
+    var cats = drawCategoryDropdown()
+    div.append(cats)
+    div.append('<br/>')
+
+    var issue = $('<input type="text"/>')
+    issue.width('450px')
+    div.append($('<span/>').text('issue: ').css('display', 'inline-block').width('50px'))
+    div.append(issue)
+    div.append('<br/>')
+
+    var skills = $('<input type="text"/>')
+    skills.width('450px')
+    div.append($('<span/>').text('skills: ').css('display', 'inline-block').width('50px'))
+    div.append(skills)
+    div.append('<br/>')
+
+    var question = $('<input type="text"/>')
+    question.width('450px')
+    div.append($('<span/>').text('question: ').css('display', 'inline-block').width('50px'))
+    div.append(question)
+    div.append('<br/>')
+
+    var price = $('<input type="text"/>')
+    price.width('100px')
+    price.val(20)
+    div.append($('<span/>').text('price: ').css('display', 'inline-block').width('50px'))
+    div.append(price)
+    div.append('<br/>')
+
+    var label = $('<label/>')
+    var _public = $('<input type="checkbox"/>')
+    label.append(_public.prop('checked', true))
+    label.append($('<span/>').text('public'))
+    div.append(label)
+    div.append('<br/>')
+
+    div.append($('<button/>').text('post').click(function () {
+        if (!issue.val()) {
+            alert('you must put an issue url')
+            return
+        }
+        if (!skills.val()) {
+            alert('you must have at least one skill')
+            return
+        }
+        if (!question.val()) {
+            alert('you must ask a question to filter people')
+            return
+        }
+        $(this).text('').append(createThrobber())
+        rpc('postIssueJob',
+            team.company__reference,
+            team.reference,
+            cats.val().cat,
+            cats.val().subcat,
+            issue.val(),
+            skills.val(),
+            price.val(),
+            _public[0].checked ? 'public' : 'private',
+            question.val(),
+            function (s) {
+                _.closeDialog()
+            })
+    }))
+    div.append($('<button/>').text('cancel').click(function () {
+        _.closeDialog()
+    }))
+    _.dialog(div)
+}
+
 function drawEng(team, eng) {
     var div = $('<div/>')
     div.append($('<span/>').text(eng.job__title))
@@ -204,11 +277,18 @@ function drawEng(team, eng) {
         _.dialog(d)
     }))
     div.append($('<button/>').text('pay/close').click(function () {
-        _.print(eng)
         $(this).text('').append(createThrobber())
         rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, 'Great work!', function () {
             div.empty()
         })
+    }))
+    div.append($('<button/>').text('close without pay').click(function () {
+        if (confirm('close without pay, are you sure?')) {
+            $(this).text('').append(createThrobber())
+            rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, null, true, function () {
+                div.empty()
+            })
+        }
     }))
     return div
 }
@@ -234,6 +314,12 @@ function drawListStuff(team) {
             var d = $('<div/>')
             d.append($('<span style="color:blue;cursor:pointer"/>').text(job.title + ' [' + getNumApps(job) + ']').click(function () {
                 drawJob(job)
+            }))
+            d.append($('<button/>').text('close').click(function () {
+                $(this).text('').append(createThrobber())
+                rpc('closeJob', job.reference, function () {
+                    d.remove()
+                })
             }))
             d1.append(d)
         })
@@ -287,6 +373,8 @@ function drawJob(job) {
 }
 
 $(function () {
+    $('body').append($('<a href="https://github.com/dglittle/nodesk"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" alt="Fork me on GitHub"></a>'));
+
     g_top = $('<div/>')
     g_bottom = $('<div style="border-top:1px solid lightgrey"/>')
     $('body').append(_.splitVert(0.01, 0.99, g_top, g_bottom))
@@ -363,6 +451,9 @@ $(function () {
                 }))
                 teamSpan.append($('<button/>').text('list').click(function () {
                     drawListStuff(team)
+                }))
+                teamSpan.append($('<button/>').text('post for github issue').click(function () {
+                    drawPostIssueJob(team)
                 }))
             }
         }

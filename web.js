@@ -131,7 +131,14 @@ _.run(function () {
 
     rpc.postJob = function (u, jobParams) {
         if (!u.credentials) throw new Error('need to set credentials')
-        getO(u).postFixedPriceJob(
+        var o = getO(u)
+
+        var before = new Date(_.time() - 1000 * 60 * 10)
+        before = JSON.stringify(before).slice(1, 20)
+
+        var randomId = _.randomString(10)
+
+        o.postFixedPriceJob(
             u.credentials.odesk.user,
             u.credentials.odesk.pass,
             u.credentials.odesk.securityAnswer,
@@ -140,11 +147,83 @@ _.run(function () {
             jobParams.category,
             jobParams.subcategory,
             jobParams.title,
-            jobParams.description,
-            jobParams.skills,
+            jobParams.description + '\n\n(task id: ' + randomId + ')',
+            jobParams.skills.split(/[, ]\s*/).join(' '),
             jobParams.budget,
             jobParams.visibility)
+
+        return _.find(o.getAll('hr/v2/jobs', {
+            buyer_team__reference : jobParams.team,
+            created_by : u.ref,
+            status : 'open',
+            created_time_from : before
+        }), function (e) {
+            return e.description.indexOf(randomId) >= 0
+        })
+    }
+
+    rpc.closeJob = function (u, job) {
+        _.p(getO(u).delete('hr/v2/jobs/' + job, _.p()))
         return true
+    }
+
+    rpc.postIssueJob = function (u, company, team, category, subcategory, issueUrl, skills, budget, visibility, question) {
+
+        if (typeof(skills) == 'string')
+            skills = skills.split(/[, ]\s*/)
+
+        if (skills.length < 1) throw new Error('need at least one skill')
+
+        var job_template = _.read('./job_template.txt')
+
+        var m = issueUrl.match(/github\.com\/(.*?)\/(.*?)\/issues\/(\d+)/)
+        var owner = m[1]
+        var repo = m[2]
+        var issueNum = m[3]
+        var path = '/repos/' + owner + '/' + repo + '/issues/' + issueNum
+
+        function do_template(s, obj) {
+            return s.replace(/\{\{(.*?)\}\}/g, function (g0, g1) {
+                with (obj) {
+                    return eval(g1)
+                }
+            })
+        }
+
+        var issue = _.unJson(_.wget('https://api.github.com' + path))
+
+        var info = {
+            skills : skills,
+            issueUrl : issueUrl,
+            projectUrl : 'https://github.com/' + owner + '/' + repo,
+            issueTitle : issue.title,
+            repo : repo,
+            questions : [
+                'what is your github id?',
+                'how long will this task take you?',
+                question
+            ]
+        }
+
+        var jobParams = {
+            company : company,
+            team : team,
+            category : category,
+            subcategory : subcategory,
+
+            title : do_template('Add enhancement in open source {{skills[0]}} project: {{repo}}', info),
+            description : do_template(job_template, info),
+            skills : skills.join(' '),
+            budget : budget,
+            visibility : visibility
+        }
+
+        var job = rpc.postJob(u, jobParams)
+
+        return _.wget('PATCH', 'https://' + u.credentials.github.user + ':' + u.credentials.github.pass + '@api.github.com' + path,
+            _.json({
+                body : "I'm offering $" + (1*budget).toFixed(2) + " on oDesk for someone to do this task: " + job.public_url + '\n\n' + issue.body
+            }))
     }
 
     rpc.getJobsAndEngs = function (u, team) {
@@ -217,12 +296,12 @@ _.run(function () {
         return true
     }
 
-    rpc.fire = function (u, company, team, job, comment) {
+    rpc.fire = function (u, company, team, job, comment, noPay) {
         getO(u).closeFixedPriceContract(
             u.credentials.odesk.user,
             u.credentials.odesk.pass,
             u.credentials.odesk.securityAnswer,
-            company, team, job, comment)
+            company, team, job, comment, noPay)
         return true
     }
 
