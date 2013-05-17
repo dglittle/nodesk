@@ -294,7 +294,7 @@ function drawEng(team, eng) {
 }
 
 function getNumApps(job) {
-    return 1*job.count_total_applicants + 1*job.count_total_candidates
+    return 1*job.num_active_candidates
 }
 
 function drawListStuff(team) {
@@ -338,20 +338,26 @@ function drawJob(job) {
     div.append($('<div/>').text(job.title))
 
     function drawApp(app) {
-        var div = $('<div/>')
-        div.append($('<a/>').attr('href', 'https://www.odesk.com/users/' + app.recno_ciphertext).text(app.contractor_name))
-        div.append($('<span/>').text(" (" + (1*app.provider__feedback_score).toFixed(2) + ")"))
+        var div = $('<div style="margin-top:20px"/>')
+        div.append($('<a/>').attr('href', app.provider__profile_url).text(app.provider__name))
+        div.append($('<span/>').text(" (" + app.provider__feedback_score + ")"))
         div.append($('<br/>'))
-        if (1*app.fp_upfront_payment > 0)
-            div.append($('<div style="font-weight:bold;color:red"/>').text(app.fp_upfront_payment + '% UPFRONT'))
-        div.append($('<div/>').text('$' + app.fp_charge_amount))
-        div.append($('<div/>').text(app.cover_letter))
-        // if (app.attachment_file_url)
-        //     div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
+        if (1 * app.fixed_price_upfront_payment > 0)
+            div.append($('<div style="font-weight:bold;color:red"/>').text(app.fixed_price_upfront_payment + '% UPFRONT'))
+        div.append($('<div/>').text('$' + app.fixed_charge_amount_agreed))
+        div.append($('<div/>').text(app.message_from_provider))
+        if (app.attachment_file_url)
+            div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
         div.append($('<button/>').text('hire').click(function () {
             $(this).text('').append(createThrobber())
-            rpc('hire', app.opening_ref, app.rid, app.ui_opening_title, function () {
+            rpc('hire', app.job__reference, app.reference, app.job__title, function () {
                 g_bottom.empty().append($('<div/>').text('hired!'))
+            })
+        }))
+        div.append($('<button/>').text('hire / leave open').click(function () {
+            $(this).text('').append(createThrobber())
+            rpc('hire', app.job__reference, app.reference, app.job__title, true, function () {
+                div.remove()
             })
         }))
         return div
@@ -381,6 +387,12 @@ $(function () {
 
 	rpc('getUser', function (user) {
         g_top.append($('<span/>').text('welcome ' + user.name))
+
+        g_top.append($('<button/>').text('logout').click(function () {
+            rpc('logout', function () {
+                location.reload()
+            })
+        }))
 
         g_top.append($('<button/>').text('set creds').click(function () {
             rpc('getCredentials', function (creds) {

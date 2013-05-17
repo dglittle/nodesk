@@ -85,7 +85,7 @@ _.run(function () {
         _.run(function () {
             var input = _.unJson(req.method.match(/post/i) ? req.body : _.unescapeUrl(req.url.match(/\?(.*)/)[1]))
             function runFunc(input) {
-        		return rpc[input.func].apply(null, [req.user].concat(input.args))
+        		return rpc[input.func].apply({ req : req, res : res }, [req.user].concat(input.args))
             }
             if (input instanceof Array)
                 var output = _.map(input, runFunc)
@@ -110,6 +110,11 @@ _.run(function () {
 
     rpc.getUser = function (u) {
     	return _.omit(u, 'accessToken', 'accessTokenSecret', 'credentials')
+    }
+
+    rpc.logout = function (u) {
+        this.req.session.destroy()
+        this.req.logout()
     }
 
     rpc.getCredentials = function (u) {
@@ -231,6 +236,7 @@ _.run(function () {
 
         var jobs = null
         var engs = null
+
         _.parallel([
             function () {
                 jobs = o.getAll('hr/v2/jobs', {
@@ -267,28 +273,33 @@ _.run(function () {
     rpc.getApps = function (u, job) {
     	var o = getO(u)
 
-        return o.getApplicants(
-            u.credentials.odesk.user,
-            u.credentials.odesk.pass,
-            u.credentials.odesk.securityAnswer,
-            job.reference)
+        // return o.getApplicants(
+        //     u.credentials.odesk.user,
+        //     u.credentials.odesk.pass,
+        //     u.credentials.odesk.securityAnswer,
+        //     job.reference)
 
-    	// var apps = o.getAll('hr/v2/offers', {
-    	// 	buyer_team__reference : job.buyer_team__reference,
-    	// 	job__reference : job.reference
-    	// })
-    	// _.parallel(_.map(apps, function (app, i) {
-    	// 	return function () {
-    	// 		apps[i] = _.p(o.get('hr/v2/offers/' + app.reference, _.p())).offer
-    	// 	}
-    	// }))
-    	// return apps
+    	var apps = o.getAll('hr/v2/offers', {
+    		buyer_team__reference : job.buyer_team__reference,
+    		job__reference : job.reference
+    	})
+
+        apps = _.filter(apps, function (app) {
+            return !(app.is_hidden == "1") && (app.interview_status == "waiting_for_buyer")
+        })
+
+    	_.parallel(_.map(apps, function (app, i) {
+    		return function () {
+    			apps[i] = _.p(o.get('hr/v2/offers/' + app.reference, _.p())).offer
+    		}
+    	}))
+    	return apps
     }
 
-    rpc.hire = function (u, jobRef, appRef, title) {
+    rpc.hire = function (u, jobRef, appRef, title, keepOpen) {
     	var ret = _.p(getO(u).post('hr/v1/jobs/' + jobRef + '/candidates/' + appRef + '/hire', {
             'engagement-title' : title,
-            // "keep-open" : "yes"
+            'keep-open' : keepOpen ? "yes" : "no"
             // "date" : "1-22-2013",
             // "weekly-limit" : 4,
             // "visibility" : "public",
