@@ -276,11 +276,25 @@ function drawEng(team, eng) {
         }))
         _.dialog(d)
     }))
-    div.append($('<button/>').text('pay/close').click(function () {
-        $(this).text('').append(createThrobber())
-        rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, 'Great work!', function () {
-            div.empty()
-        })
+    div.append($('<button/>').text('pay/close...').click(function () {
+        var d = $('<div/>')
+        var s = $('<h3>Give feedback for work</h3>')
+        d.append(s)
+        d.append($('<br/>'))
+        var t = $('<textarea style="width:300px;height:200px"/>')
+        t.val('Good work!')
+        d.append(t)
+        d.append($('<br/>'))
+        d.append($('<button/>').text('pay/close').click(function () {
+            $(this).text('').append(createThrobber());
+            rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, t.val(), function () {
+                div.empty()
+            });
+        }))
+        d.append($('<button/>').text('cancel').click(function () {
+            _.closeDialog()
+        }))
+        _.dialog(d)
     }))
     div.append($('<button/>').text('close without pay').click(function () {
         if (confirm('close without pay, are you sure?')) {
