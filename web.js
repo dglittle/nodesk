@@ -1,4 +1,8 @@
 
+testMode = process.argv[2] == "test"
+if (testMode)
+    console.log("== TEST MODE ==")
+
 function defaultEnv(key, val) {
     if (!process.env[key])
         process.env[key] = val
@@ -6,7 +10,10 @@ function defaultEnv(key, val) {
 defaultEnv("PORT", 5000)
 defaultEnv("HOST", "http://localhost:5000")
 defaultEnv("NODE_ENV", "production")
-defaultEnv("MONGOHQ_URL", "mongodb://localhost:27017/nodesk")
+if (testMode)
+    defaultEnv("MONGOHQ_URL", "mongodb://localhost:27017/nodeskTest")
+else
+    defaultEnv("MONGOHQ_URL", "mongodb://localhost:27017/nodesk")
 defaultEnv("SESSION_SECRET", "blahblah")
 defaultEnv("ODESK_API_KEY", "3f448b92c4aaf8918c0106bd164a1656")
 defaultEnv("ODESK_API_SECRET", "e6a71b4f05467054")
@@ -58,7 +65,35 @@ _.run(function () {
 		})
 	}))
 
-	require('./login.js')(db, app, process.env.HOST, process.env.ODESK_API_KEY, process.env.ODESK_API_SECRET)
+    if (testMode) {
+        app.use(function (req, res, next) {
+            _.run(function () {
+                var user = {
+                    _id : 'test_id',
+                    accessToken : 'test_token',
+                    accessTokenSecret : 'test_secret',
+
+                    ref : '12345',
+                    name : 'Test User',
+                    img : null,
+                    country : 'USA',
+                    profile : 'https://www.odesk.com/users/~0181d7da6c3671ac21'
+                }
+                req.logout = function () {}
+
+                _.p(db.collection('users').update({ _id : user._id }, { $set : _.omit(user, '_id') }, { upsert: true }, _.p()))
+
+                req.user = _.p(db.collection('users').findOne({ _id : user._id }, _.p()))
+
+                next()
+            })
+        })
+        app.get('/login', function (req, res) {
+            res.redirect('/')
+        })
+    } else {
+       require('./login.js')(db, app, process.env.HOST, process.env.ODESK_API_KEY, process.env.ODESK_API_SECRET)
+    }
 
 	app.all('*', function (req, res, next) {
 		if (!req.user) {
@@ -100,7 +135,7 @@ _.run(function () {
         })
     })
 
-    function getO(u) {
+    var getO = function (u) {
 		var odesk = require('node-odesk-utils')
 		var o = new odesk(process.env.ODESK_API_KEY, process.env.ODESK_API_SECRET)
 		o.OAuth.accessToken = u.accessToken
@@ -127,7 +162,10 @@ _.run(function () {
     }
 
     rpc.getTeams = function (u) {
-		return _.p(getO(u).get('hr/v2/teams', _.p())).teams
+        if (testMode)
+            return getTestTeams()
+        else
+            return _.p(getO(u).get('hr/v2/teams', _.p())).teams
     }
 
     rpc.setTeam = function (u, team) {
@@ -136,6 +174,9 @@ _.run(function () {
 
     rpc.postJob = function (u, jobParams) {
         if (!u.credentials) throw new Error('need to set credentials')
+
+        if (testMode) return getTestJobs()[0]
+
         var o = getO(u)
 
         var before = new Date(_.time() - 1000 * 60 * 10)
@@ -168,11 +209,15 @@ _.run(function () {
     }
 
     rpc.closeJob = function (u, job) {
+        if (testMode) return true
+
         _.p(getO(u).delete('hr/v2/jobs/' + job, _.p()))
         return true
     }
 
     rpc.postIssueJob = function (u, company, team, category, subcategory, issueUrl, skills, budget, visibility, question) {
+
+        if (testMode) return true
 
         if (typeof(skills) == 'string')
             skills = skills.split(/[, ]\s*/)
@@ -225,13 +270,19 @@ _.run(function () {
 
         var job = rpc.postJob(u, jobParams)
 
-        return _.wget('PATCH', 'https://' + u.credentials.github.user + ':' + u.credentials.github.pass + '@api.github.com' + path,
+        _.wget('PATCH', 'https://' + u.credentials.github.user + ':' + u.credentials.github.pass + '@api.github.com' + path,
             _.json({
                 body : "I'm offering $" + (1*budget).toFixed(2) + " on oDesk for someone to do this task: " + job.public_url + '\n\n' + issue.body
             }))
+
+        return true
     }
 
     rpc.getJobsAndEngs = function (u, team) {
+
+        if (testMode)
+            return { jobs : getTestJobs(), engs : getTestEngs() }
+
         var o = getO(u)
 
         var jobs = null
@@ -271,6 +322,10 @@ _.run(function () {
     }
 
     rpc.getApps = function (u, job) {
+
+        if (testMode)
+            return getTestApps()
+
     	var o = getO(u)
 
         // return o.getApplicants(
@@ -297,6 +352,7 @@ _.run(function () {
     }
 
     rpc.hire = function (u, jobRef, appRef, title, keepOpen) {
+        if (testMode) return true
     	var ret = _.p(getO(u).post('hr/v1/jobs/' + jobRef + '/candidates/' + appRef + '/hire', {
             'engagement-title' : title,
             'keep-open' : keepOpen ? "yes" : "no"
@@ -308,6 +364,7 @@ _.run(function () {
     }
 
     rpc.fire = function (u, company, team, job, comment, noPay) {
+        if (testMode) return true
         getO(u).closeFixedPriceContract(
             u.credentials.odesk.user,
             u.credentials.odesk.pass,
@@ -317,6 +374,7 @@ _.run(function () {
     }
 
     rpc.sendMessage = function (u, to, subj, msg) {
+        if (testMode) return true
     	return _.p(getO(u).post('mc/v1/threads/' + u._id, {
     		recipients : to,
     		subject : subj,
@@ -341,3 +399,177 @@ _.run(function () {
 		console.log("go to " + process.env.HOST)
 	})
 })
+
+function getTestTeams() {
+    return [
+        {
+            "parent_team__id": "test",
+            "is_hidden": "",
+            "status": "active",
+            "name": "Test Team 1",
+            "company_name": "test",
+            "parent_team__name": "test",
+            "company__reference": "123",
+            "parent_team__reference": "123",
+            "reference": "1234",
+            "id": "test"
+        },
+        {
+            "parent_team__id": "test2",
+            "is_hidden": "",
+            "status": "active",
+            "name": "Test Team 2",
+            "company_name": "test2",
+            "parent_team__name": "test2",
+            "company__reference": "234",
+            "parent_team__reference": "234",
+            "reference": "2345",
+            "id": "test2"
+        }
+    ]
+}
+
+function getTestJobs() {
+    return [
+        {
+            "visibility": "invite-only",
+            "status": "open",
+            "public_url": "https://www.odesk.com/jobs/~01287e314daf4e286a",
+            "budget": "20",
+            "reference": "202557357",
+            "num_candidates": "0",
+            "start_date": "1368921600000",
+            "num_new_candidates": "0",
+            "filled_date": "",
+            "category": "Web Development",
+            "attachment_file_url": "",
+            "off_the_network": "",
+            "buyer_company__reference": "118",
+            "buyer_team__reference": "416616",
+            "num_active_candidates": "0",
+            "created_time": "1369022107000",
+            "last_candidacy_access_time": "",
+            "duration": "",
+            "created_by_name": "Greg Little",
+            "description": "test job 1\n\n(task id: Zsr6sJLPuh)",
+            "buyer_company__name": "oDesk",
+            "subcategory": "Web Programming",
+            "job_type": "fixed-price",
+            "buyer_team__name": "oDesk R&D BootCamp",
+            "buyer_team__id": "odesk:rndbootcamp",
+            "end_date": "1369526400000",
+            "title": "test job 1",
+            "cancelled_date": "",
+            "created_by": "greglittle",
+            "count_total_applicants": "0",
+            "count_new_applicants": "0",
+            "count_total_candidates": "0"
+        },
+        {
+            "visibility": "invite-only",
+            "status": "open",
+            "public_url": "https://www.odesk.com/jobs/~01287e314daf4e286a",
+            "budget": "20",
+            "reference": "202557356",
+            "num_candidates": "0",
+            "start_date": "1368921600000",
+            "num_new_candidates": "0",
+            "filled_date": "",
+            "category": "Web Development",
+            "attachment_file_url": "",
+            "off_the_network": "",
+            "buyer_company__reference": "118",
+            "buyer_team__reference": "416616",
+            "num_active_candidates": "0",
+            "created_time": "1369022107000",
+            "last_candidacy_access_time": "",
+            "duration": "",
+            "created_by_name": "Greg Little",
+            "description": "test job 2\n\n(task id: Zsr6sJLPuh)",
+            "buyer_company__name": "oDesk",
+            "subcategory": "Web Programming",
+            "job_type": "fixed-price",
+            "buyer_team__name": "oDesk R&D BootCamp",
+            "buyer_team__id": "odesk:rndbootcamp",
+            "end_date": "1369526400000",
+            "title": "test job 2",
+            "cancelled_date": "",
+            "created_by": "greglittle",
+            "count_total_applicants": "0",
+            "count_new_applicants": "0",
+            "count_total_candidates": "0"
+        }
+    ]
+}
+
+function getTestEngs() {
+    return [
+        {
+            "rent_percent": "10",
+            "estimated_duration_id": "5",
+            "provider__id": "testuser1",
+            "fixed_price_upfront_payment": "0",
+            "modified_time": "1365413598000",
+            "job__reference": "202383623",
+            "estimated_duration": "Less than 1 week",
+            "roles": {
+                "role": "buyer"
+            },
+            "weekly_limit_next_week": "",
+            "offer__reference": "237286567",
+            "buyer_team__reference": "416616",
+            "engagement_end_date": "",
+            "created_time": "1365413598000",
+            "description": "",
+            "provider_team__reference": "",
+            "engagement_start_date": "1365379200000",
+            "buyer_team__id": "odesk:rndbootcamp",
+            "provider_team__id": "",
+            "status": "active",
+            "engagement_title": "test job A",
+            "provider__reference": "1977857",
+            "fixed_pay_amount_agreed": "30.00",
+            "reference": "12967056",
+            "fixed_charge_amount_agreed": "33.33",
+            "engagement_job_type": "fixed-price",
+            "job__title": "test job A",
+            "provider__has_agency": ""
+        },
+        {
+            "rent_percent": "10",
+            "estimated_duration_id": "5",
+            "provider__id": "testuser2",
+            "fixed_price_upfront_payment": "0",
+            "modified_time": "1365413598000",
+            "job__reference": "202383623",
+            "estimated_duration": "Less than 1 week",
+            "roles": {
+                "role": "buyer"
+            },
+            "weekly_limit_next_week": "",
+            "offer__reference": "237286567",
+            "buyer_team__reference": "416616",
+            "engagement_end_date": "",
+            "created_time": "1365413598000",
+            "description": "",
+            "provider_team__reference": "",
+            "engagement_start_date": "1365379200000",
+            "buyer_team__id": "odesk:rndbootcamp",
+            "provider_team__id": "",
+            "status": "active",
+            "engagement_title": "test job B",
+            "provider__reference": "1977857",
+            "fixed_pay_amount_agreed": "30.00",
+            "reference": "12967056",
+            "fixed_charge_amount_agreed": "33.33",
+            "engagement_job_type": "fixed-price",
+            "job__title": "test job B",
+            "provider__has_agency": ""
+        }
+    ]
+}
+
+function getTestApps() {
+    return [
+    ]
+}
