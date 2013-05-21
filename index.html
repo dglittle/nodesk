@@ -289,6 +289,7 @@ function drawEng(team, eng) {
             $(this).text('').append(createThrobber());
             rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, t.val(), function () {
                 div.empty()
+                _.closeDialog()
             });
         }))
         d.append($('<button/>').text('cancel').click(function () {
