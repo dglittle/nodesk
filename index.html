@@ -301,7 +301,7 @@ function drawEng(team, eng) {
                 _.closeDialog()
             });
             
-            /*Second RPC call if needed */
+            /*Second RPC */
             rpc('fire', ft.company__reference, eng.buyer_team__reference, eng.reference, ft.val(),s.val(),t.val(), function () {
                 div.empty()
                 _.closeDialog()
