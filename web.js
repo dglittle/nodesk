@@ -437,16 +437,16 @@ function getTestJobs() {
             "public_url": "https://www.odesk.com/jobs/~01287e314daf4e286a",
             "budget": "20",
             "reference": "202557357",
-            "num_candidates": "0",
+            "num_candidates": "1",
             "start_date": "1368921600000",
-            "num_new_candidates": "0",
+            "num_new_candidates": "1",
             "filled_date": "",
             "category": "Web Development",
             "attachment_file_url": "",
             "off_the_network": "",
             "buyer_company__reference": "118",
             "buyer_team__reference": "416616",
-            "num_active_candidates": "0",
+            "num_active_candidates": "1",
             "created_time": "1369022107000",
             "last_candidacy_access_time": "",
             "duration": "",
@@ -461,9 +461,9 @@ function getTestJobs() {
             "title": "test job 1",
             "cancelled_date": "",
             "created_by": "greglittle",
-            "count_total_applicants": "0",
-            "count_new_applicants": "0",
-            "count_total_candidates": "0"
+            "count_total_applicants": "1",
+            "count_new_applicants": "1",
+            "count_total_candidates": "1"
         },
         {
             "visibility": "invite-only",
@@ -571,5 +571,44 @@ function getTestEngs() {
 
 function getTestApps() {
     return [
+{
+    "rent_percent": "10",
+    "estimated_duration_id": "4",
+    "created_type": "provider",
+    "provider__id": "someproviderid",
+    "modified_time": "1306938305000",
+    "key": "~~e9df8980a444a253",
+    "job__reference": "100011111",
+    "estimated_duration": "Less than 1 month",
+    "roles": { "role": [
+        "provider",
+        "buyer"
+    ]},
+    "buyer_company__reference": "2222",
+    "buyer_team__reference": "2222",
+    "engagement_end_date": "1306886400000",
+    "is_matching_preferences": "1",
+    "created_time": "1296757658000",
+    "buyer_company__name": "My Company",
+    "my_role": "both",
+    "hourly_pay_rate": "5",
+    "provider__feedback_score": "5.00",
+    "fixed_charge_amount_agreed": "1.00",
+    "buyer_team__id": "mytestcompany",
+    "engagement_start_date": "1296691200000",
+    "provider__name": "Maksym Novozhylov",
+    "provider__profile_url": "https://www.odesk.com/users/~~b1823e8db32ec373",
+    "created_by": "someproviderid",
+    "has_provider_signed": "1",
+    "status": "cancelled    ",
+    "provider__reference": "22222",
+    "reference": "100033333",
+    "candidacy_status": "rejected",
+    "engagement_job_type": "hourly",
+    "created_by_name": "Maksym Novozhylov",
+    "job__title": "Test job",
+    "interview_status": "in_process",
+    "buyer_team__name": "My Company > My test company"
+}
     ]
 }
