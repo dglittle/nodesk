@@ -276,26 +276,11 @@ function drawEng(team, eng) {
         }))
         _.dialog(d)
     }))
-    div.append($('<button/>').text('pay/close...').click(function () {
-        var d = $('<div/>')
-        var s = $('<h3>Give feedback for work</h3>')
-        d.append(s)
-        d.append($('<br/>'))
-        var t = $('<textarea style="width:300px;height:200px"/>')
-        t.val('Good work!')
-        d.append(t)
-        d.append($('<br/>'))
-        d.append($('<button/>').text('pay/close').click(function () {
-            $(this).text('').append(createThrobber());
-            rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, t.val(), function () {
-                div.empty()
-                _.closeDialog()
-            });
-        }))
-        d.append($('<button/>').text('cancel').click(function () {
-            _.closeDialog()
-        }))
-        _.dialog(d)
+    div.append($('<button/>').text('pay/close').click(function () {
+        $(this).text('').append(createThrobber())
+        rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, 'Great work!', function () {
+            div.empty()
+        })
     }))
     div.append($('<button/>').text('close without pay').click(function () {
         if (confirm('close without pay, are you sure?')) {
@@ -363,11 +348,29 @@ function drawJob(job) {
         div.append($('<div/>').text(app.message_from_provider))
         if (app.attachment_file_url)
             div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
-        div.append($('<button/>').text('hire').click(function () {
-            $(this).text('').append(createThrobber())
-            rpc('hire', app.job__reference, app.reference, app.job__title, function () {
-                g_bottom.empty().append($('<div/>').text('hired!'))
-            })
+        div.append($('<button/>').text('hire...').click(function () {
+           $(this).text('').append(createThrobber())
+           var d = $('<div/>')
+           var s = $('<input type="text" style="width:300px"/>')
+           s.val('welcome!')
+           d.append(s)
+           d.append($('<br/>'))
+           var t = $('<textarea style="width:300px;height:200px"/>')
+           t.val('you can go ahead and get started. thanks :)')
+           d.append(t)
+           d.append($('<br/>'))
+           d.append($('<button/>').text('hire').click(function () {
+               rpc('hire', app.job__reference, app.reference, app.job__title, function () {
+                  rpc('sendMessage', app.provider__id, s.val(), t.val(), function () {
+                      g_bottom.empty().append($('<div/>').text('hired!'))
+                      _.closeDialog();
+                  });
+               })
+           }))
+           d.append($('<button/>').text('cancel').click(function () {
+               _.closeDialog()
+           }))
+           _.dialog(d);
         }))
         div.append($('<button/>').text('hire / leave open').click(function () {
             $(this).text('').append(createThrobber())
