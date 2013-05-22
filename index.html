@@ -363,11 +363,29 @@ function drawJob(job) {
         div.append($('<div/>').text(app.message_from_provider))
         if (app.attachment_file_url)
             div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
-        div.append($('<button/>').text('hire').click(function () {
-            $(this).text('').append(createThrobber())
-            rpc('hire', app.job__reference, app.reference, app.job__title, function () {
-                g_bottom.empty().append($('<div/>').text('hired!'))
-            })
+        div.append($('<button/>').text('hire...').click(function () {
+           var d = $('<div/>')
+           var s = $('<input type="text" style="width:300px"/>')
+           s.val('welcome!')
+           d.append(s)
+           d.append($('<br/>'))
+           var t = $('<textarea style="width:300px;height:200px"/>')
+           t.val('you can go ahead and get started. thanks :)')
+           d.append(t)
+           d.append($('<br/>'))
+           d.append($('<button/>').text('hire').click(function () {
+               $(this).text('').append(createThrobber())
+               rpc('hire', app.job__reference, app.reference, app.job__title, function () {
+                  rpc('sendMessage', app.provider__id, s.val(), t.val(), function () {
+                      g_bottom.empty().append($('<div/>').text('hired!'))
+                      _.closeDialog();
+                  });
+               })
+           }))
+           d.append($('<button/>').text('cancel').click(function () {
+               _.closeDialog()
+           }))
+           _.dialog(d);
         }))
         div.append($('<button/>').text('hire / leave open').click(function () {
             $(this).text('').append(createThrobber())
