@@ -297,7 +297,6 @@ function drawEng(team, eng) {
         d.append($('<button/>').text('pay/close').click(function () {
             $(this).text('').append(createThrobber());
             rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, f.val(), function () {
-                
                 /* Second RPC after success of 1st RPC call */
                 rpc('sendMessage',eng.provider__id, s.val(),t.val(), function () {
                     div.empty()
