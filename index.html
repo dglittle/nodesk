@@ -297,14 +297,12 @@ function drawEng(team, eng) {
         d.append($('<button/>').text('pay/close').click(function () {
             $(this).text('').append(createThrobber());
             rpc('fire', team.company__reference, eng.buyer_team__reference, eng.reference, t.val(), function () {
-                div.empty()
-                _.closeDialog()
-            });
-            
-            /*Second RPC To Send Message*/
-            rpc('sendMessage', eng.provider__id, eng.reference, ft.val(),s.val(),t.val(), function () {
-                div.empty()
-                _.closeDialog()
+                
+                /* Second RPC after success of 1st RPC call */
+                rpc('sendMessage',team.company__reference, eng.provider__id, s.val(),t.val(), function () {
+                    div.empty()
+                    _.closeDialog()
+                });
             });
         }))
         d.append($('<button/>').text('cancel').click(function () {
