@@ -301,7 +301,7 @@ function drawEng(team, eng) {
                 _.closeDialog()
             });
             
-            /*Second RPC */
+            /*Second RPC To Send Message*/
             rpc('sendMessage', eng.provider__id, eng.reference, ft.val(),s.val(),t.val(), function () {
                 div.empty()
                 _.closeDialog()
