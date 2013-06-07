@@ -6,6 +6,7 @@ for posting/managing fixed-price jobs on oDesk
 to run:
 ```
 > mongod &
+> npm install
 > node web.js
 in browser: open http://localhost:5000
 ```
