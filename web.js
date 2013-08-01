@@ -1,8 +1,4 @@
 
-testMode = process.argv[2] == "test"
-if (testMode)
-    console.log("== TEST MODE ==")
-
 function defaultEnv(key, val) {
     if (!process.env[key])
         process.env[key] = val
@@ -10,13 +6,12 @@ function defaultEnv(key, val) {
 defaultEnv("PORT", 5000)
 defaultEnv("HOST", "http://localhost:5000")
 defaultEnv("NODE_ENV", "production")
-if (testMode)
-    defaultEnv("MONGOHQ_URL", "mongodb://localhost:27017/nodeskTest")
-else
-    defaultEnv("MONGOHQ_URL", "mongodb://localhost:27017/nodesk")
+defaultEnv("MONGOHQ_URL", "mongodb://localhost:27017/nodesk")
 defaultEnv("SESSION_SECRET", "blahblah")
 defaultEnv("ODESK_API_KEY", "3f448b92c4aaf8918c0106bd164a1656")
 defaultEnv("ODESK_API_SECRET", "e6a71b4f05467054")
+defaultEnv("GITHUB_CLIENT_ID", "c8216b1247ddcf0b1eff")
+defaultEnv("GITHUB_CLIENT_SECRET", "7543eff6fc9436e1daaa99e533edafdc5d39720f")
 
 ///
 
@@ -46,6 +41,10 @@ _.run(function () {
 	var express = require('express')
 	var app = express()
 
+    _.serveOnExpress(express, app)
+
+    app.use(express.static(__dirname + '/static'))
+
 	app.use(express.cookieParser())
 	app.use(function (req, res, next) {
 		_.run(function () {
@@ -65,43 +64,97 @@ _.run(function () {
 		})
 	}))
 
-    if (testMode) {
-        app.use(function (req, res, next) {
-            _.run(function () {
-                var user = {
-                    _id : 'test_id',
-                    accessToken : 'test_token',
-                    accessTokenSecret : 'test_secret',
+    // login stuff
+    var passport = require('passport')
 
-                    ref : '12345',
-                    name : 'Test User',
-                    img : null,
-                    country : 'USA',
-                    profile : 'https://www.odesk.com/users/~0181d7da6c3671ac21'
-                }
-                req.logout = function () {}
-
-                _.p(db.collection('users').update({ _id : user._id }, { $set : _.omit(user, '_id') }, { upsert: true }, _.p()))
-
-                req.user = _.p(db.collection('users').findOne({ _id : user._id }, _.p()))
-
-                next()
+    OdeskStrategy = require('passport-odesk').Strategy
+    passport.use(new OdeskStrategy({
+            consumerKey: process.env.ODESK_API_KEY,
+            consumerSecret: process.env.ODESK_API_SECRET,
+            callbackURL: process.env.HOST + "/login/odesk/callback"
+        },
+        function(accessToken, tokenSecret, profile, done) {
+            done(null, {
+                id : profile.id,
+                accessToken : accessToken,
+                tokenSecret : tokenSecret
             })
+        }
+    ))
+
+    GitHubStrategy = require('passport-github').Strategy
+    passport.use(new GitHubStrategy({
+            clientID: process.env.GITHUB_CLIENT_ID,
+            clientSecret: process.env.GITHUB_CLIENT_SECRET,
+            callbackURL: process.env.HOST + "/login/github/callback",
+            scope : ['public_repo'],
+            customHeaders: { "User-Agent": "gitDesk/1.0" }
+        },
+        function(accessToken, refreshToken, profile, done) {
+            done(null, {
+                id : profile.username,
+                accessToken : accessToken
+            })
+        }
+    ))
+
+    passport.serializeUser(function (user, done) {
+        done(null, "none");
+    })
+
+    passport.deserializeUser(function (obj, done) {
+        done(null, {});
+    })    
+
+    app.use(passport.initialize())
+    app.use(passport.session())
+
+    app.use(function (req, res, next) {
+        db.users.findOne({ _id : req.session.user }, function (err, data) {
+            if (err) throw err
+            req.user = data
+            next()
         })
-        app.get('/login', function (req, res) {
+    })
+
+    app.get('/login/odesk', passport.authenticate('odesk'))
+    app.get('/login/odesk/callback', passport.authenticate('odesk', { failureRedirect: '/' }), function (req, res) {
+        req.session.user = req.user.id
+        db.users.update({ _id : req.user.id }, { $set : {
+            odesk : {
+                id : req.user.id,
+                auth : {
+                    accessToken : req.user.accessToken,
+                    tokenSecret : req.user.tokenSecret
+                }
+            }
+        }}, { upsert : true }, function (err) {
+            if (err) throw err
             res.redirect('/')
         })
-    } else {
-       require('./login.js')(db, app, process.env.HOST, process.env.ODESK_API_KEY, process.env.ODESK_API_SECRET)
-    }
+    })
 
-	app.all('*', function (req, res, next) {
-		if (!req.user) {
-			res.redirect('/login')
-		} else {
-			next()
-		}
-	})
+    app.get('/login/github', passport.authenticate('github'))
+    app.all('/login/github/callback', passport.authenticate('github', { failureRedirect: '/' }), function(req, res) {
+        db.users.update({ _id : req.session.user }, { $set : {
+            github : {
+                id : req.user.id,
+                auth : {
+                    accessToken : req.user.accessToken
+                }
+            }
+        }}, function (err) {
+            if (err) throw err
+            res.redirect('/')
+        })
+    })
+
+    app.get('/logout', function (req, res) {
+        req.session.user = null
+        req.session.destroy()
+        req.logout()
+        res.redirect('/')
+    })
 
 	g_rpc_version = 1
 
@@ -138,18 +191,23 @@ _.run(function () {
     var getO = function (u) {
 		var odesk = require('node-odesk-utils')
 		var o = new odesk(process.env.ODESK_API_KEY, process.env.ODESK_API_SECRET)
-		o.OAuth.accessToken = u.accessToken
-		o.OAuth.accessTokenSecret = u.accessTokenSecret
+		o.OAuth.accessToken = u.odesk.auth.accessToken
+		o.OAuth.accessTokenSecret = u.odesk.auth.tokenSecret
 		return o
     }
 
     rpc.getUser = function (u) {
-    	return _.omit(u, 'accessToken', 'accessTokenSecret', 'credentials')
+        if (u) {
+            if (u.odesk) delete u.odesk.auth
+            if (u.github) delete u.github.auth
+        }
+        return u
     }
 
-    rpc.logout = function (u) {
-        this.req.session.destroy()
-        this.req.logout()
+    rpc.unlinkGithub = function (u) {
+        _.p(db.users.update({ _id : u._id }, {
+            $unset : { github : null }
+        }, _.p()))
     }
 
     rpc.getCredentials = function (u) {
@@ -162,20 +220,33 @@ _.run(function () {
     }
 
     rpc.getTeams = function (u) {
-        if (testMode)
-            return getTestTeams()
-        else
-            return _.p(getO(u).get('hr/v2/teams', _.p())).teams
+        return _.p(getO(u).get('hr/v2/teams', _.p())).teams
     }
 
     rpc.setTeam = function (u, team) {
     	_.p(db.users.update({ _id : u._id }, { $set : { team : team } }, _.p()))
     }
 
+    var skill_dict = _.makeSet(_.unJson(_.read('./skills.json')))
+
     rpc.postJob = function (u, jobParams) {
         if (!u.credentials) throw new Error('need to set credentials')
 
-        if (testMode) return getTestJobs()[0]
+// work here
+
+
+//     function validateSkills(skills) {
+//         var skill_array = skills.split(/\s*,\s*/i)
+//         skill_array = _.filter(skill_array, function(skill) { return skill_dict[skill] })
+//         skills = skill_array.join(';')
+// //      _.print('skills: ' + skills)
+//         return skills
+//     }
+
+
+
+
+
 
         var o = getO(u)
 
@@ -209,15 +280,11 @@ _.run(function () {
     }
 
     rpc.closeJob = function (u, job) {
-        if (testMode) return true
-
         _.p(getO(u).delete('hr/v2/jobs/' + job, _.p()))
         return true
     }
 
     rpc.postIssueJob = function (u, company, team, category, subcategory, issueUrl, skills, budget, visibility, question) {
-
-        if (testMode) return true
 
         if (typeof(skills) == 'string')
             skills = skills.split(/[, ]\s*/)
@@ -279,10 +346,6 @@ _.run(function () {
     }
 
     rpc.getJobsAndEngs = function (u, team) {
-
-        if (testMode)
-            return { jobs : getTestJobs(), engs : getTestEngs() }
-
         var o = getO(u)
 
         var jobs = null
@@ -322,10 +385,6 @@ _.run(function () {
     }
 
     rpc.getApps = function (u, job) {
-
-        if (testMode)
-            return getTestApps()
-
     	var o = getO(u)
 
         // return o.getApplicants(
@@ -352,7 +411,6 @@ _.run(function () {
     }
 
     rpc.hire = function (u, jobRef, appRef, title, keepOpen) {
-        if (testMode) return true
     	var ret = _.p(getO(u).post('hr/v1/jobs/' + jobRef + '/candidates/' + appRef + '/hire', {
             'engagement-title' : title,
             'keep-open' : keepOpen ? "yes" : "no"
@@ -364,7 +422,6 @@ _.run(function () {
     }
 
     rpc.fire = function (u, company, team, job, comment, noPay) {
-        if (testMode) return true
         getO(u).closeFixedPriceContract(
             u.credentials.odesk.user,
             u.credentials.odesk.pass,
@@ -374,7 +431,6 @@ _.run(function () {
     }
 
     rpc.sendMessage = function (u, to, subj, msg) {
-        if (testMode) return true
     	return _.p(getO(u).post('mc/v1/threads/' + u._id, {
     		recipients : to,
     		subject : subj,
@@ -399,347 +455,3 @@ _.run(function () {
 		console.log("go to " + process.env.HOST)
 	})
 })
-
-function getTestTeams() {
-    return [
-        {
-            "parent_team__id": "test",
-            "is_hidden": "",
-            "status": "active",
-            "name": "Test Team 1",
-            "company_name": "test",
-            "parent_team__name": "test",
-            "company__reference": "123",
-            "parent_team__reference": "123",
-            "reference": "1234",
-            "id": "test"
-        },
-        {
-            "parent_team__id": "test2",
-            "is_hidden": "",
-            "status": "active",
-            "name": "Test Team 2",
-            "company_name": "test2",
-            "parent_team__name": "test2",
-            "company__reference": "234",
-            "parent_team__reference": "234",
-            "reference": "2345",
-            "id": "test2"
-        }
-    ]
-}
-
-function getTestJobs() {
-    return [
-        {
-            "visibility": "invite-only",
-            "status": "open",
-            "public_url": "https://www.odesk.com/jobs/~01287e314daf4e286a",
-            "budget": "20",
-            "reference": "202557357",
-            "num_candidates": "1",
-            "start_date": "1368921600000",
-            "num_new_candidates": "1",
-            "filled_date": "",
-            "category": "Web Development",
-            "attachment_file_url": "",
-            "off_the_network": "",
-            "buyer_company__reference": "118",
-            "buyer_team__reference": "416616",
-            "num_active_candidates": "1",
-            "created_time": "1369022107000",
-            "last_candidacy_access_time": "",
-            "duration": "",
-            "created_by_name": "Greg Little",
-            "description": "test job 1\n\n(task id: Zsr6sJLPuh)",
-            "buyer_company__name": "oDesk",
-            "subcategory": "Web Programming",
-            "job_type": "fixed-price",
-            "buyer_team__name": "oDesk R&D BootCamp",
-            "buyer_team__id": "odesk:rndbootcamp",
-            "end_date": "1369526400000",
-            "title": "test job 1",
-            "cancelled_date": "",
-            "created_by": "greglittle",
-            "count_total_applicants": "1",
-            "count_new_applicants": "1",
-            "count_total_candidates": "1"
-        },
-        {
-            "visibility": "invite-only",
-            "status": "open",
-            "public_url": "https://www.odesk.com/jobs/~01287e314daf4e286a",
-            "budget": "20",
-            "reference": "202557356",
-            "num_candidates": "0",
-            "start_date": "1368921600000",
-            "num_new_candidates": "0",
-            "filled_date": "",
-            "category": "Web Development",
-            "attachment_file_url": "",
-            "off_the_network": "",
-            "buyer_company__reference": "118",
-            "buyer_team__reference": "416616",
-            "num_active_candidates": "0",
-            "created_time": "1369022107000",
-            "last_candidacy_access_time": "",
-            "duration": "",
-            "created_by_name": "Greg Little",
-            "description": "test job 2\n\n(task id: Zsr6sJLPuh)",
-            "buyer_company__name": "oDesk",
-            "subcategory": "Web Programming",
-            "job_type": "fixed-price",
-            "buyer_team__name": "oDesk R&D BootCamp",
-            "buyer_team__id": "odesk:rndbootcamp",
-            "end_date": "1369526400000",
-            "title": "test job 2",
-            "cancelled_date": "",
-            "created_by": "greglittle",
-            "count_total_applicants": "0",
-            "count_new_applicants": "0",
-            "count_total_candidates": "0"
-        }
-    ]
-}
-
-function getTestEngs() {
-    return [
-        {
-            "rent_percent": "10",
-            "estimated_duration_id": "5",
-            "provider__id": "testuser1",
-            "fixed_price_upfront_payment": "0",
-            "modified_time": "1365413598000",
-            "job__reference": "202383623",
-            "estimated_duration": "Less than 1 week",
-            "roles": {
-                "role": "buyer"
-            },
-            "weekly_limit_next_week": "",
-            "offer__reference": "237286567",
-            "buyer_team__reference": "416616",
-            "engagement_end_date": "",
-            "created_time": "1365413598000",
-            "description": "",
-            "provider_team__reference": "",
-            "engagement_start_date": "1365379200000",
-            "buyer_team__id": "odesk:rndbootcamp",
-            "provider_team__id": "",
-            "status": "active",
-            "engagement_title": "test job A",
-            "provider__reference": "1977857",
-            "fixed_pay_amount_agreed": "30.00",
-            "reference": "12967056",
-            "fixed_charge_amount_agreed": "33.33",
-            "engagement_job_type": "fixed-price",
-            "job__title": "test job A",
-            "provider__has_agency": ""
-        },
-        {
-            "rent_percent": "10",
-            "estimated_duration_id": "5",
-            "provider__id": "testuser2",
-            "fixed_price_upfront_payment": "0",
-            "modified_time": "1365413598000",
-            "job__reference": "202383623",
-            "estimated_duration": "Less than 1 week",
-            "roles": {
-                "role": "buyer"
-            },
-            "weekly_limit_next_week": "",
-            "offer__reference": "237286567",
-            "buyer_team__reference": "416616",
-            "engagement_end_date": "",
-            "created_time": "1365413598000",
-            "description": "",
-            "provider_team__reference": "",
-            "engagement_start_date": "1365379200000",
-            "buyer_team__id": "odesk:rndbootcamp",
-            "provider_team__id": "",
-            "status": "active",
-            "engagement_title": "test job B",
-            "provider__reference": "1977857",
-            "fixed_pay_amount_agreed": "30.00",
-            "reference": "12967056",
-            "fixed_charge_amount_agreed": "33.33",
-            "engagement_job_type": "fixed-price",
-            "job__title": "test job B",
-            "provider__has_agency": ""
-        }
-    ]
-}
-
-function getTestApps() {
-    return [
-        {
-            "estimated_duration_id": "5",
-            "staffer_user__name": "Test User X",
-            "created_type": "provider",
-            "fixed_price_upfront_payment": "20",
-            "modified_time": "1369120085000",
-            "key": "~~5f881beee10f7943",
-            "job__reference": "202562421",
-            "has_buyer_signed": "",
-            "is_hidden": "",
-            "buyer_company__reference": "118",
-            "engagement_end_date": "",
-            "is_matching_preferences": "1",
-            "created_time": "1369120085000",
-            "description": "",
-            "buyer_company__name": "oDesk",
-            "my_role": "buyer",
-            "engagement_start_date": "1369008000000",
-            "buyer_team__id": "odesk:rndbootcamp",
-            "buyer_user__id": "",
-            "created_by": "testuserx",
-            "provider_team__id": "testuserx",
-            "has_provider_signed": "1",
-            "provider_team__name": "Test User Solutions",
-            "staffer_user__id": "testuserx",
-            "provider__feedback_score": "0",
-            "fixed_pay_amount_agreed": "100",
-            "fixed_charge_amount_agreed": "111.11",
-            "candidacy_status": "in_process",
-            "staffer_user__reference": "1719674",
-            "is_viewed": "",
-            "message_from_provider": "Hello, this is my cover letter, which is a test cover letter for testing purposes, so we have something to show here.",
-            "engagement_job_type": "fixed-price",
-            "reason_code": "",
-            "signed_by_buyer_user": "",
-            "interview_status": "waiting_for_buyer",
-            "buyer_team__name": "oDesk > oDesk R&D BootCamp",
-            "provider__has_agency": "1",
-            "rent_percent": "10",
-            "provider__id": "testuserx",
-            "reason_reference": "",
-            "is_shortlisted": "",
-            "estimated_duration": "Less than 1 week",
-            "hiring_time": "",
-            "roles": {
-                "role": "buyer"
-            },
-            "signed_time_buyer": "",
-            "attachment_file_url": "",
-            "buyer_team__reference": "416616",
-            "attachment_by": "",
-            "buyer_user__name": "",
-            "signed_by_provider_user": "testuserx",
-            "provider_team__reference": "415879",
-            "engagement__reference": "",
-            "job__description": "task: https://github.com/dglittle/password-generator/issues/1\n\nsubmit result as pull request\n\nI'll hire the first person that answers these questions correctly in their cover letter:\n\n1. what is your github id?\n2. how long will this task take you?\n3. how would you convert an 8-bit hex number like \"f3\" into an integer?\n\n\n(task id: 4qLZAq23zw)",
-            "provider_company__reference": "415879",
-            "signed_time_provider": "1369120085000",
-            "provider__name": "Test User X",
-            "provider__total_hours": "",
-            "provider__profile_url": "https://www.odesk.com/users/~0181d7da6c3671ac21",
-            "status": "",
-            "engagement_title": "",
-            "message_from_buyer": "",
-            "provider_company__name": "Test User Solutions",
-            "provider__reference": "12345",
-            "buyer_last_offer_user__id": "",
-            "info_matching_preferences": {
-                "prefs_total": "1",
-                "prefs_match": "1",
-                "match_details": {
-                    "candidate_type_pref": {
-                        "Value": "all",
-                        "Match": "yes"
-                    }
-                }
-            },
-            "reference": "1234567",
-            "reason_extra": "",
-            "expiration_date": "",
-            "job__title": "Add enhancement in open source javascript project: password-generator",
-            "reason_inactive": "",
-            "buyer_user__reference": "",
-            "is_undecided": "1"
-        },
-        {
-            "estimated_duration_id": "5",
-            "staffer_user__name": "Test User Y",
-            "created_type": "provider",
-            "fixed_price_upfront_payment": "0",
-            "modified_time": "1369120085000",
-            "key": "~~5f881beee10f7943",
-            "job__reference": "202562421",
-            "has_buyer_signed": "",
-            "is_hidden": "",
-            "buyer_company__reference": "118",
-            "engagement_end_date": "",
-            "is_matching_preferences": "1",
-            "created_time": "1369120085000",
-            "description": "",
-            "buyer_company__name": "oDesk",
-            "my_role": "buyer",
-            "engagement_start_date": "1369008000000",
-            "buyer_team__id": "odesk:rndbootcamp",
-            "buyer_user__id": "",
-            "created_by": "testusery",
-            "provider_team__id": "testusery",
-            "has_provider_signed": "1",
-            "provider_team__name": "Test User Solutions",
-            "staffer_user__id": "testusery",
-            "provider__feedback_score": "0",
-            "fixed_pay_amount_agreed": "100",
-            "fixed_charge_amount_agreed": "111.11",
-            "candidacy_status": "in_process",
-            "staffer_user__reference": "1719674",
-            "is_viewed": "",
-            "message_from_provider": "Hello, this is my cover letter, which is a test cover letter for testing purposes, so we have something to show here.",
-            "engagement_job_type": "fixed-price",
-            "reason_code": "",
-            "signed_by_buyer_user": "",
-            "interview_status": "waiting_for_buyer",
-            "buyer_team__name": "oDesk > oDesk R&D BootCamp",
-            "provider__has_agency": "1",
-            "rent_percent": "10",
-            "provider__id": "testusery",
-            "reason_reference": "",
-            "is_shortlisted": "",
-            "estimated_duration": "Less than 1 week",
-            "hiring_time": "",
-            "roles": {
-                "role": "buyer"
-            },
-            "signed_time_buyer": "",
-            "attachment_file_url": "",
-            "buyer_team__reference": "416616",
-            "attachment_by": "",
-            "buyer_user__name": "",
-            "signed_by_provider_user": "testuserx",
-            "provider_team__reference": "415879",
-            "engagement__reference": "",
-            "job__description": "task: https://github.com/dglittle/password-generator/issues/1\n\nsubmit result as pull request\n\nI'll hire the first person that answers these questions correctly in their cover letter:\n\n1. what is your github id?\n2. how long will this task take you?\n3. how would you convert an 8-bit hex number like \"f3\" into an integer?\n\n\n(task id: 4qLZAq23zw)",
-            "provider_company__reference": "415879",
-            "signed_time_provider": "1369120085000",
-            "provider__name": "Test User Y",
-            "provider__total_hours": "",
-            "provider__profile_url": "https://www.odesk.com/users/~0181d7da6c3671ac21",
-            "status": "",
-            "engagement_title": "",
-            "message_from_buyer": "",
-            "provider_company__name": "Test User Solutions",
-            "provider__reference": "12345",
-            "buyer_last_offer_user__id": "",
-            "info_matching_preferences": {
-                "prefs_total": "1",
-                "prefs_match": "1",
-                "match_details": {
-                    "candidate_type_pref": {
-                        "Value": "all",
-                        "Match": "yes"
-                    }
-                }
-            },
-            "reference": "1234567",
-            "reason_extra": "",
-            "expiration_date": "",
-            "job__title": "Add enhancement in open source javascript project: password-generator",
-            "reason_inactive": "",
-            "buyer_user__reference": "",
-            "is_undecided": "1"
-        }
-    ]
-}

@@ -5,14 +5,17 @@
   "dependencies": {
     "express": "*",
     "mongojs": "*",
+    "connect-mongo": "*",
+
     "passport": "*",
     "passport-oauth": "*",
-    "connect-mongo": "*",
-    "node-odesk": "*",
+    "passport-odesk": "*",
     "passport-github": "*",
+
+    "node-odesk": "*",
+    "node-odesk-utils": "git://github.com/dglittle/node-odesk-utils.git",
     
-    "gl519": "git://github.com/dglittle/gl519.git#gh-pages",
-    "node-odesk-utils": "git://github.com/dglittle/node-odesk-utils.git"
+    "gl519": "git://github.com/dglittle/gl519.git#gh-pages"
   },
   "engines": {
     "node": "0.10.*",

@@ -19,14 +19,15 @@ th, td {
 </head>
 <body>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
-<script src="http://dglittle.github.io/gl519/index.js"></script>
-<script src="http://dglittle.github.io/cdn/jquery.timeago.js"></script>
-<script src="http://dglittle.github.io/cdn/jquery.cookie.js"></script>
-<script src="http://dglittle.github.io/cdn/tab.js"></script>
+<script src="/gl519/index.js"></script>
+<script src="jquery.timeago.js"></script>
+<script src="jquery.cookie.js"></script>
+<script src="tab.js"></script>
+<script src="cats.js"></script>
 <script>
 
 function createThrobber() {
-    var d = $("<div />");
+    var d = $("<span />");
     for (var i = 0; i < 10; i++) {
         $("<span />").text(".")
                      .appendTo(d)
@@ -373,36 +374,41 @@ function drawJob(job) {
         div.append($('<div/>').text('$' + app.fixed_charge_amount_agreed))
         div.append($('<div/>').text(app.message_from_provider))
         if (app.attachment_file_url)
-            div.append($('<a/>').attr('href', app.attachment_file_url).text('attachment'))
-        div.append($('<button/>').text('hire...').click(function () {
-           var d = $('<div/>')
-           var s = $('<input type="text" style="width:300px"/>')
-           s.val('welcome!')
-           d.append(s)
-           d.append($('<br/>'))
-           var t = $('<textarea style="width:300px;height:200px"/>')
-           t.val('you can go ahead and get started. thanks :)')
-           d.append(t)
-           d.append($('<br/>'))
-           d.append($('<button/>').text('hire').click(function () {
-               $(this).text('').append(createThrobber())
-               rpc('hire', app.job__reference, app.reference, app.job__title, function () {
-                  rpc('sendMessage', app.provider__id, s.val(), t.val(), function () {
-                      g_bottom.empty().append($('<div/>').text('hired!'))
-                      _.closeDialog();
-                  });
-               })
-           }))
-           d.append($('<button/>').text('cancel').click(function () {
-               _.closeDialog()
-           }))
-           _.dialog(d);
+            div.append($('<a target="_blank"/>').attr('href', app.attachment_file_url).text('attachment'))
+
+        function onHire(leaveOpen) {
+            var d = $('<div/>')
+            var s = $('<input type="text" style="width:300px"/>')
+            s.val('welcome!')
+            d.append(s)
+            d.append($('<br/>'))
+            var t = $('<textarea style="width:300px;height:200px"/>')
+            t.val('you can go ahead and get started. thanks :)')
+            d.append(t)
+            d.append($('<br/>'))
+            d.append($('<button/>').text('hire').click(function () {
+                $(this).text('').append(createThrobber())
+                rpc('hire', app.job__reference, app.reference, app.job__title, leaveOpen)
+                rpc('sendMessage', app.provider__id, s.val(), t.val(), function () {
+                    if (leaveOpen) {
+                        div.remove()
+                    } else {
+                        g_bottom.empty().append($('<div/>').text('hired!'))
+                    }
+                    _.closeDialog();
+                })
+            }))
+            d.append($('<button/>').text('cancel').click(function () {
+                _.closeDialog()
+            }))
+            _.dialog(d);
+        }
+
+        div.append($('<button/>').text('hire / leave open...').click(function () {
+            onHire(true)
         }))
-        div.append($('<button/>').text('hire / leave open').click(function () {
-            $(this).text('').append(createThrobber())
-            rpc('hire', app.job__reference, app.reference, app.job__title, true, function () {
-                div.remove()
-            })
+        div.append($('<button/>').text('hire AND CLOSE...').click(function () {
+            onHire(false)
         }))
         return div
     }
@@ -422,14 +428,75 @@ function drawJob(job) {
     g_bottom.empty().append(div)
 }
 
+function drawTeam(team) {
+    function drawTeamName(t) {
+        return t.company_name + ' > ' + t.name
+    }
+    var d = $('<div/>')
+    d.text('odesk team: ' + (team ? drawTeamName(team) : '') + ' ')
+    d.append($('<button/>').text('set team').click(function () {
+        $(this).remove()
+        var t = createThrobber()
+        d.append(t)
+        rpc('getTeams', function (teams) {
+            t.remove()
+            d.append(drawDropdown(_.object([['select a team...', null]].concat(_.map(teams, function (t) { return [drawTeamName(t), t] })))).change(function () {
+                $(this).remove()
+                d.append(createThrobber)
+                rpc('setTeam', $(':selected', this)[0].val, function () {
+                    main()
+                })
+            }))
+        })
+    }))
+    return d
+}
+
+function drawMain() {    
+    var d = $('<div/>')
+    d.append(createThrobber())
+    rpc('getUser', function (user) {
+        d.empty()
+
+        if (!user || !user.odesk) {
+            d.append($('<div/>').append($('<a href="/login/odesk"/>').text('login using odesk')))
+            return
+        }
+        d.append($('<div/>').text('odesk: ' + user.odesk.id + ' ').append($('<a href="/logout"/>').text('logout')))
+
+        d.append(drawTeam(user.team))
+
+        if (user.github) {
+            d.append($('<div/>').text('github: ' + user.github.id + ' ').append($('<button/>').text('unlink').click(function () {
+                rpc('unlinkGithub', main)
+            })))
+        } else {
+            d.append($('<div/>').append($('<a href="/login/github"/>').text('link github account')))
+        }
+
+    })
+    return d
+}
+
+function main() {
+    $('body').empty().append(drawMain())
+}
+
 $(function () {
-    $('body').append($('<a href="https://github.com/dglittle/nodesk"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_red_aa0000.png" alt="Fork me on GitHub"></a>'));
+
+    main()
+
+    return
 
     g_top = $('<div/>')
     g_bottom = $('<div style="border-top:1px solid lightgrey"/>')
     $('body').append(_.splitVert(0.01, 0.99, g_top, g_bottom))
 
 	rpc('getUser', function (user) {
+        g_top.append(drawUserLogin(user))
+
+        return
+
         g_top.append($('<span/>').text('welcome ' + user.name))
 
         g_top.append($('<button/>').text('logout').click(function () {
@@ -516,102 +583,6 @@ $(function () {
         redrawTeam(user.team)
 	})
 })
-
-var g_cats = {
-    "Web Development": [
-        "Web Design",
-        "Web Programming",
-        "Ecommerce",
-        "UI Design",
-        "Website QA",
-        "Website Project Management",
-        "Other - Web Development"
-    ],
-    "Software Development": [
-        "Desktop Applications",
-        "Game Development",
-        "Scripts & Utilities",
-        "Software Plug-ins",
-        "Mobile Apps",
-        "Application Interface Design",
-        "Software Project Management",
-        "Software QA",
-        "VOIP",
-        "Other - Software Development"
-    ],
-    "Networking & Information Systems": [
-        "Network Administration",
-        "DBA - Database Administration",
-        "Server Administration",
-        "ERP / CRM Implementation",
-        "Other - Networking & Information Systems"
-    ],
-    "Writing & Translation": [
-        "Technical Writing",
-        "Website Content",
-        "Blog & Article Writing",
-        "Copywriting",
-        "Translation",
-        "Creative Writing",
-        "Other - Writing & Translation"
-    ],
-    "Administrative Support": [
-        "Data Entry",
-        "Personal Assistant",
-        "Web Research",
-        "Email Response Handling",
-        "Transcription",
-        "Other - Administrative Support"
-    ],
-    "Design & Multimedia": [
-        "Graphic Design",
-        "Logo Design",
-        "Illustration",
-        "Print Design",
-        "3D Modeling & CAD",
-        "Audio Production",
-        "Video Production",
-        "Voice Talent",
-        "Animation",
-        "Presentations",
-        "Engineering & Technical Design",
-        "Other - Design & Multimedia"
-    ],
-    "Customer Service": [
-        "Customer Service & Support",
-        "Technical Support",
-        "Phone Support",
-        "Order Processing",
-        "Other - Customer Service"
-    ],
-    "Sales & Marketing": [
-        "Advertising",
-        "Email Marketing",
-        "SEO - Search Engine Optimization",
-        "SEM - Search Engine Marketing",
-        "SMM - Social Media Marketing",
-        "PR - Public Relations",
-        "Telemarketing & Telesales",
-        "Business Plans & Marketing Strategy",
-        "Market Research & Surveys",
-        "Sales & Lead Generation",
-        "Other - Sales & Marketing"
-    ],
-    "Business Services": [
-        "Accounting",
-        "Bookkeeping",
-        "HR / Payroll",
-        "Financial Services & Planning",
-        "Payment Processing",
-        "Legal",
-        "Project Management",
-        "Business Consulting",
-        "Recruiting",
-        "Statistical Analysis",
-        "Other - Business Services",
-        ""
-    ]
-}
 
 </script>
 
