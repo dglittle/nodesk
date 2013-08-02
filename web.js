@@ -173,39 +173,28 @@ _.run(function () {
     }
 
     rpc.postJob = function (u, jobParams) {
-        if (!u.credentials) throw new Error('need to set credentials')
-
         if (testMode) return getTestJobs()[0]
 
         var o = getO(u)
 
-        var before = new Date(_.time() - 1000 * 60 * 10)
-        before = JSON.stringify(before).slice(1, 20)
+        function getDateFromNow(fromNow) {
+            var d = new Date(_.time() + fromNow)
+            function zeroPrefix(x) { x = "" + x; return x.length < 2 ? '0' + x : x }
+            return zeroPrefix(d.getMonth() + 1) + "-" + zeroPrefix(d.getDate()) + "-" + d.getFullYear()
+        }
 
-        var randomId = _.randomString(10)
-
-        o.postFixedPriceJob(
-            u.credentials.odesk.user,
-            u.credentials.odesk.pass,
-            u.credentials.odesk.securityAnswer,
-            jobParams.company,
-            jobParams.team,
-            jobParams.category,
-            jobParams.subcategory,
-            jobParams.title,
-            jobParams.description + '\n\n(task id: ' + randomId + ')',
-            jobParams.skills.split(/[, ]\s*/).join(' '),
-            jobParams.budget,
-            jobParams.visibility)
-
-        return _.find(o.getAll('hr/v2/jobs', {
+        return _.p(o.post('hr/v2/jobs', {
             buyer_team__reference : jobParams.team,
-            created_by : u.ref,
-            status : 'open',
-            created_time_from : before
-        }), function (e) {
-            return e.description.indexOf(randomId) >= 0
-        })
+            title : jobParams.title,
+            job_type : 'fixed-price',
+            description : jobParams.description,
+            end_date : getDateFromNow(1000 * 60 * 60 * 24 * 7),
+            visibility : jobParams.visibility,
+            budget : jobParams.budget,
+            category : jobParams.category,
+            subcategory : jobParams.subcategory,
+            skills : jobParams.skills.split(/[, ]\s*/).join(';')
+        }, _.p())).job
     }
 
     rpc.closeJob = function (u, job) {
