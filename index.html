@@ -82,8 +82,8 @@ function rpc() {
                         save_rpc[i].cb(r[i])
                 }
             },
-            error : function () {
-                onError()
+            error : function (s) {
+                onError(s.responseText)
             }
         })
     }, 0)

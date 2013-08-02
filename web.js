@@ -118,20 +118,25 @@ _.run(function () {
         if (!req.cookies.rpc_token || req.cookies.rpc_token != req.params[1])
             throw new Error('token mismatch')
         _.run(function () {
-            var input = _.unJson(req.method.match(/post/i) ? req.body : _.unescapeUrl(req.url.match(/\?(.*)/)[1]))
-            function runFunc(input) {
-        		return rpc[input.func].apply({ req : req, res : res }, [req.user].concat(input.args))
+            try {
+                var input = _.unJson(req.method.match(/post/i) ? req.body : _.unescapeUrl(req.url.match(/\?(.*)/)[1]))
+                function runFunc(input) {
+            		return rpc[input.func].apply({ req : req, res : res }, [req.user].concat(input.args))
+                }
+                if (input instanceof Array)
+                    var output = _.map(input, runFunc)
+                else
+                    var output = runFunc(input)
+                var body = _.json(output) || "null"
+                res.writeHead(200, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Content-Length': Buffer.byteLength(body)
+                })
+                res.end(body)
+            } catch (e) {
+                console.log(e)
+                res.send(500, 'Oops: ' + (e.message || e.msg || e))
             }
-            if (input instanceof Array)
-                var output = _.map(input, runFunc)
-            else
-                var output = runFunc(input)
-            var body = _.json(output) || "null"
-            res.writeHead(200, {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Content-Length': Buffer.byteLength(body)
-            })
-            res.end(body)
         })
     })
 
@@ -183,18 +188,25 @@ _.run(function () {
             return zeroPrefix(d.getMonth() + 1) + "-" + zeroPrefix(d.getDate()) + "-" + d.getFullYear()
         }
 
-        return _.p(o.post('hr/v2/jobs', {
-            buyer_team__reference : jobParams.team,
-            title : jobParams.title,
-            job_type : 'fixed-price',
-            description : jobParams.description,
-            end_date : getDateFromNow(1000 * 60 * 60 * 24 * 7),
-            visibility : jobParams.visibility,
-            budget : jobParams.budget,
-            category : jobParams.category,
-            subcategory : jobParams.subcategory,
-            skills : jobParams.skills.split(/[, ]\s*/).join(';')
-        }, _.p())).job
+        try {
+            return _.p(o.post('hr/v2/jobs', {
+                buyer_team__reference : jobParams.team,
+                title : jobParams.title,
+                job_type : 'fixed-price',
+                description : jobParams.description,
+                end_date : getDateFromNow(1000 * 60 * 60 * 24 * 7),
+                visibility : jobParams.visibility,
+                budget : jobParams.budget,
+                category : jobParams.category,
+                subcategory : jobParams.subcategory,
+                skills : jobParams.skills.split(/[, ]\s*/).join(';')
+            }, _.p())).job
+        } catch (e) {
+            if (e.statusCode == 400)
+                throw new Error('probably unknown skill: ' + jobParams.skills)
+            else
+                throw e
+        }
     }
 
     rpc.closeJob = function (u, job) {
